@@ -27,6 +27,15 @@ DEBUG = True
 
 ALLOWED_HOSTS = ['*']
 
+CSRF_TRUSTED_ORIGINS = [
+    'https://*.openshiftapps.com',
+    'https://*.redhat.com',
+    'http://localhost:8080',
+    'http://127.0.0.1:8080',
+    'http://localhost:8000',
+    'http://127.0.0.1:8000',
+]
+
 # Application definition
 
 INSTALLED_APPS = [
@@ -49,6 +58,12 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
+try:
+    import whitenoise
+    MIDDLEWARE.insert(1, 'whitenoise.middleware.WhiteNoiseMiddleware')
+except ImportError:
+    pass
 
 ROOT_URLCONF = 'DFD.urls'
 
