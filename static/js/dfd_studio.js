@@ -1,7 +1,8 @@
 /**
- * DFD Studio Core Engine
- * Interactive multi-level canvas, Gane-Sarson & Yourdon-DeMarco notation,
- * real-time Software Engineering rule validation, auto-layout, and exporters.
+ * DFD Studio Core Engine — Draw.io Interactive Edition
+ * Interactive multi-level canvas with draw.io-like anchor ports, dynamic mouse arrow drawing,
+ * 8-point shape resizing, inline double-click editing, drag-and-drop palette, color palettes,
+ * undo/redo history, Gane-Sarson & Yourdon-DeMarco notation, SE rule verification, and exporters.
  */
 
 // Global Studio State
@@ -16,15 +17,27 @@ const StudioState = {
         2: { nodes: [], edges: [] }
     },
     selected: null, // { type: 'node'|'edge', id: string }
+    activeTool: 'pointer', // 'pointer' | 'connector' | 'text'
     isConnecting: false,
     connectSource: null,
+    snapToGrid: true,
+    gridSize: 10,
+
+    // Interactive Connection Drawing (from ports)
+    drawingConnection: null, // { sourceNode, sourcePort, startX, startY }
+
+    // Canvas Navigation
     zoom: 1.0,
     pan: { x: 0, y: 0 },
     isPanning: false,
     panStart: { x: 0, y: 0 },
     draggingNode: null,
     dragOffset: { x: 0, y: 0 },
-    history: []
+
+    // Undo / Redo History Stack
+    history: [],
+    historyIndex: -1,
+    maxHistory: 30
 };
 
 // Initialize Studio on DOM Ready
@@ -32,6 +45,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initDefaultTemplate();
     setupCanvasEvents();
     setupTemplateSelector();
+    pushHistoryState();
     renderCanvas();
 });
 
@@ -48,7 +62,7 @@ function initDefaultTemplate() {
         if (!selectedT) {
             selectedT = INITIAL_TEMPLATES_DATA[0];
         }
-        loadTemplateData(selectedT);
+        loadTemplateData(selectedT, false);
     } else {
         // Fallback minimal Context diagram
         StudioState.levels[0] = {
@@ -64,9 +78,10 @@ function initDefaultTemplate() {
     }
 }
 
-function loadTemplateData(tpl) {
+function loadTemplateData(tpl, recordHistory = true) {
     StudioState.projectName = tpl.title;
-    document.getElementById('projectTitleInput').value = tpl.title;
+    const titleInput = document.getElementById('projectTitleInput');
+    if (titleInput) titleInput.value = tpl.title;
     StudioState.levels[0] = JSON.parse(JSON.stringify(tpl.level0 || { nodes: [], edges: [] }));
     StudioState.levels[1] = JSON.parse(JSON.stringify(tpl.level1 || { nodes: [], edges: [] }));
     StudioState.levels[2] = JSON.parse(JSON.stringify(tpl.level2 || { nodes: [], edges: [] }));
@@ -75,6 +90,7 @@ function loadTemplateData(tpl) {
     StudioState.zoom = 1.0;
     StudioState.pan = { x: 0, y: 0 };
     updateLevelButtons();
+    if (recordHistory) pushHistoryState();
     renderCanvas();
     if (window.showToast) window.showToast(`Loaded "${tpl.title}" template!`, 'info');
 }
@@ -90,6 +106,39 @@ function setupTemplateSelector() {
             loadTemplateData(found);
         }
     });
+}
+
+// History Management (Undo / Redo)
+function pushHistoryState() {
+    if (StudioState.historyIndex < StudioState.history.length - 1) {
+        StudioState.history = StudioState.history.slice(0, StudioState.historyIndex + 1);
+    }
+    const snapshot = JSON.stringify(StudioState.levels);
+    StudioState.history.push(snapshot);
+    if (StudioState.history.length > StudioState.maxHistory) {
+        StudioState.history.shift();
+    }
+    StudioState.historyIndex = StudioState.history.length - 1;
+}
+
+function undo() {
+    if (StudioState.historyIndex > 0) {
+        StudioState.historyIndex--;
+        StudioState.levels = JSON.parse(StudioState.history[StudioState.historyIndex]);
+        StudioState.selected = null;
+        renderCanvas();
+        if (window.showToast) window.showToast('Undo', 'secondary');
+    }
+}
+
+function redo() {
+    if (StudioState.historyIndex < StudioState.history.length - 1) {
+        StudioState.historyIndex++;
+        StudioState.levels = JSON.parse(StudioState.history[StudioState.historyIndex]);
+        StudioState.selected = null;
+        renderCanvas();
+        if (window.showToast) window.showToast('Redo', 'secondary');
+    }
 }
 
 // Level Switching
@@ -140,13 +189,14 @@ function renderCanvas() {
     const graph = getCurrentGraph();
     const container = document.getElementById('nodesContainer');
     const edgesGroup = document.getElementById('edgesGroup');
-    const viewport = document.getElementById('canvasViewport');
 
     if (!container || !edgesGroup) return;
 
-    // Clear existing
+    // Clear existing (preserve previewConnectionPath)
     container.innerHTML = '';
+    const previewEl = document.getElementById('previewConnectionPath');
     edgesGroup.innerHTML = '';
+    if (previewEl) edgesGroup.appendChild(previewEl);
 
     // Transform style for pan & zoom
     container.style.transform = `translate(${StudioState.pan.x}px, ${StudioState.pan.y}px) scale(${StudioState.zoom})`;
@@ -168,7 +218,7 @@ function renderCanvas() {
         renderEdge(edge, sNode, tNode, edgesGroup, isSelected);
     });
 
-    // 2. Render Nodes (DOM elements for crisp text & controls)
+    // 2. Render Nodes (DOM elements with ports & resize handles)
     graph.nodes.forEach(node => {
         const isSelected = StudioState.selected && StudioState.selected.type === 'node' && StudioState.selected.id === node.id;
         renderNode(node, container, isSelected);
@@ -180,7 +230,7 @@ function renderCanvas() {
     validateActiveDiagram();
 }
 
-// Render individual edge
+// Render individual edge (smooth Bezier arrow with editable label)
 function renderEdge(edge, s, t, svgGroup, isSelected) {
     const sWidth = s.width || 180;
     const sHeight = s.height || 80;
@@ -201,7 +251,6 @@ function renderEdge(edge, s, t, svgGroup, isSelected) {
     const dy = p2.y - p1.y;
     const dist = Math.hypot(dx, dy);
     const curvature = Math.min(40, dist * 0.15);
-    // Perpendicular offset
     const normX = -dy / (dist || 1);
     const normY = dx / (dist || 1);
     const cx = ((p1.x + p2.x) / 2) + (normX * curvature);
@@ -220,11 +269,11 @@ function renderEdge(edge, s, t, svgGroup, isSelected) {
     });
     path.addEventListener('dblclick', (e) => {
         e.stopPropagation();
-        openEditModal('edge', edge.id);
+        startInlineEditEdge(edge.id, cx, cy);
     });
     svgGroup.appendChild(path);
 
-    // Flow Label centered along the curve
+    // Flow Label centered along curve
     const labelText = edge.label || "Data Flow";
     const labelX = cx;
     const labelY = cy;
@@ -237,8 +286,8 @@ function renderEdge(edge, s, t, svgGroup, isSelected) {
     textEl.textContent = labelText;
 
     // Background pill
-    const estWidth = Math.max(50, labelText.length * 6.8 + 14);
-    const estHeight = 20;
+    const estWidth = Math.max(50, labelText.length * 7 + 16);
+    const estHeight = 22;
     const rectEl = document.createElementNS("http://www.w3.org/2000/svg", "rect");
     rectEl.setAttribute("x", labelX - (estWidth / 2));
     rectEl.setAttribute("y", labelY - 11);
@@ -253,7 +302,7 @@ function renderEdge(edge, s, t, svgGroup, isSelected) {
         });
         el.addEventListener('dblclick', (e) => {
             e.stopPropagation();
-            openEditModal('edge', edge.id);
+            startInlineEditEdge(edge.id, labelX, labelY);
         });
     });
 
@@ -271,19 +320,17 @@ function getIntersectionPoint(x1, y1, x2, y2, w, h) {
     const slope = dy / (dx || 0.0001);
     let ix, iy;
 
-    // Check intersection with vertical edges
     if (Math.abs(slope) <= hh / hw) {
         ix = dx > 0 ? x1 + hw : x1 - hw;
         iy = y1 + slope * (ix - x1);
     } else {
-        // Horizontal edges
         iy = dy > 0 ? y1 + hh : y1 - hh;
         ix = x1 + (iy - y1) / slope;
     }
     return { x: ix, y: iy };
 }
 
-// Render individual node
+// Render individual node with draw.io ports and resize handles
 function renderNode(node, container, isSelected) {
     const el = document.createElement('div');
     el.id = `node_${node.id}`;
@@ -295,10 +342,18 @@ function renderNode(node, container, isSelected) {
 
     let nodeClass = `dfd-node ${isSelected ? 'selected' : ''} `;
 
+    // Apply custom colors if specified
+    if (node.fillColor) {
+        el.style.backgroundColor = node.fillColor;
+    }
+    if (node.borderColor) {
+        el.style.borderColor = node.borderColor;
+    }
+
     if (node.type === 'entity') {
         nodeClass += 'node-entity';
         el.className = nodeClass;
-        el.innerHTML = `<div><i class="bi bi-person me-1"></i> ${escapeHtml(node.label || 'Entity')}</div>`;
+        el.innerHTML = `<div><i class="bi bi-person me-1"></i> <span class="node-label-span">${escapeHtml(node.label || 'Entity')}</span></div>`;
     } else if (node.type === 'process') {
         const num = node.number || (StudioState.currentLevel === 0 ? '0' : '1.0');
         if (StudioState.notationStyle === 'gane_sarson') {
@@ -306,7 +361,7 @@ function renderNode(node, container, isSelected) {
             el.className = nodeClass;
             el.innerHTML = `
                 <div class="proc-header font-mono">${escapeHtml(num)}</div>
-                <div class="proc-body">${escapeHtml(node.label || 'Process')}</div>
+                <div class="proc-body node-label-span">${escapeHtml(node.label || 'Process')}</div>
             `;
         } else {
             // Yourdon circle
@@ -315,7 +370,7 @@ function renderNode(node, container, isSelected) {
             el.style.borderRadius = '50%';
             el.innerHTML = `
                 <div class="proc-num font-mono">${escapeHtml(num)}</div>
-                <div class="proc-text small">${escapeHtml(node.label || 'Process')}</div>
+                <div class="proc-text small node-label-span">${escapeHtml(node.label || 'Process')}</div>
             `;
         }
     } else if (node.type === 'datastore') {
@@ -325,17 +380,56 @@ function renderNode(node, container, isSelected) {
             el.className = nodeClass;
             el.innerHTML = `
                 <div class="ds-id font-mono">${escapeHtml(dsNum)}</div>
-                <div class="ds-name">${escapeHtml(node.label || 'Data Store')}</div>
+                <div class="ds-name node-label-span">${escapeHtml(node.label || 'Data Store')}</div>
             `;
         } else {
             // Yourdon parallel lines
             nodeClass += 'node-datastore-yourdon';
             el.className = nodeClass;
-            el.innerHTML = `<span class="font-mono text-warning me-2">${escapeHtml(dsNum)}</span> ${escapeHtml(node.label || 'Data Store')}`;
+            el.innerHTML = `<span class="font-mono text-warning me-2">${escapeHtml(dsNum)}</span> <span class="node-label-span">${escapeHtml(node.label || 'Data Store')}</span>`;
         }
+    } else if (node.type === 'decision') {
+        nodeClass += 'node-decision';
+        el.className = nodeClass;
+        el.innerHTML = `<div class="node-label-span"><i class="bi bi-diamond me-1"></i> ${escapeHtml(node.label || 'Decision')}</div>`;
+    } else if (node.type === 'note') {
+        nodeClass += 'node-note';
+        el.className = nodeClass;
+        el.innerHTML = `<div class="node-label-span"><i class="bi bi-sticky me-1"></i> ${escapeHtml(node.label || 'Note')}</div>`;
+    } else if (node.type === 'boundary') {
+        nodeClass += 'node-boundary';
+        el.className = nodeClass;
+        el.innerHTML = `<div class="node-label-span"><i class="bi bi-bounding-box-circles me-1"></i> ${escapeHtml(node.label || 'System Boundary')}</div>`;
     }
 
-    // Node Event Listeners
+    // DRAW.IO FEATURE: 4 Connection Ports (North, South, East, West)
+    ['n', 's', 'e', 'w'].forEach(pos => {
+        const port = document.createElement('div');
+        port.className = `connection-port port-${pos}`;
+        port.dataset.port = pos;
+        port.title = "Drag to draw connection arrow";
+        port.addEventListener('mousedown', (e) => {
+            e.stopPropagation();
+            startPortDrawing(node, pos, e);
+        });
+        el.appendChild(port);
+    });
+
+    // DRAW.IO FEATURE: 8 Resize Handles on Selection
+    if (isSelected) {
+        ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'].forEach(dir => {
+            const handle = document.createElement('div');
+            handle.className = `resize-handle resize-handle-${dir}`;
+            handle.dataset.dir = dir;
+            handle.addEventListener('mousedown', (e) => {
+                e.stopPropagation();
+                startNodeResize(node, dir, e);
+            });
+            el.appendChild(handle);
+        });
+    }
+
+    // Node Event Listeners: Select, Move, and Double-click Inline Edit
     el.addEventListener('mousedown', (e) => {
         if (StudioState.isConnecting) {
             handleConnectClick(node.id);
@@ -347,15 +441,282 @@ function renderNode(node, container, isSelected) {
         startDraggingNode(node, e);
     });
 
+    // DRAW.IO FEATURE: Double-click Inline Label Editing directly on canvas
     el.addEventListener('dblclick', (e) => {
         e.stopPropagation();
-        openEditModal('node', node.id);
+        startInlineEditNode(node.id, el);
     });
 
     container.appendChild(el);
 }
 
-// Drag & Drop Node Movement
+// DRAW.IO FEATURE: Interactive Connection Drawing with Mouse Drag
+function startPortDrawing(sourceNode, port, e) {
+    const sWidth = sourceNode.width || 180;
+    const sHeight = sourceNode.height || 80;
+    let startX = sourceNode.x + (sWidth / 2);
+    let startY = sourceNode.y + (sHeight / 2);
+
+    if (port === 'n') { startY = sourceNode.y; }
+    else if (port === 's') { startY = sourceNode.y + sHeight; }
+    else if (port === 'w') { startX = sourceNode.x; }
+    else if (port === 'e') { startX = sourceNode.x + sWidth; }
+
+    StudioState.drawingConnection = {
+        sourceNode: sourceNode,
+        sourcePort: port,
+        startX: startX,
+        startY: startY
+    };
+
+    const previewPath = document.getElementById('previewConnectionPath');
+    if (previewPath) {
+        previewPath.style.display = 'block';
+        previewPath.setAttribute('d', `M ${startX} ${startY} L ${startX} ${startY}`);
+    }
+
+    const viewport = document.getElementById('canvasViewport');
+    if (viewport) viewport.classList.add('connecting');
+
+    function onDrawingMove(moveEvent) {
+        if (!StudioState.drawingConnection) return;
+        const curCanvasX = (moveEvent.clientX - StudioState.pan.x) / StudioState.zoom;
+        const curCanvasY = (moveEvent.clientY - StudioState.pan.y) / StudioState.zoom;
+
+        const sx = StudioState.drawingConnection.startX;
+        const sy = StudioState.drawingConnection.startY;
+        const dx = curCanvasX - sx;
+        const dy = curCanvasY - sy;
+        const dist = Math.hypot(dx, dy);
+        const curvature = Math.min(35, dist * 0.12);
+        const normX = -dy / (dist || 1);
+        const normY = dx / (dist || 1);
+        const cx = ((sx + curCanvasX) / 2) + (normX * curvature);
+        const cy = ((sy + curCanvasY) / 2) + (normY * curvature);
+
+        if (previewPath) {
+            previewPath.setAttribute('d', `M ${sx} ${sy} Q ${cx} ${cy} ${curCanvasX} ${curCanvasY}`);
+        }
+    }
+
+    function onDrawingUp(upEvent) {
+        window.removeEventListener('mousemove', onDrawingMove);
+        window.removeEventListener('mouseup', onDrawingUp);
+
+        if (previewPath) {
+            previewPath.style.display = 'none';
+            previewPath.setAttribute('d', '');
+        }
+        if (viewport) viewport.classList.remove('connecting');
+
+        if (!StudioState.drawingConnection) return;
+        const srcNode = StudioState.drawingConnection.sourceNode;
+        StudioState.drawingConnection = null;
+
+        const upCanvasX = (upEvent.clientX - StudioState.pan.x) / StudioState.zoom;
+        const upCanvasY = (upEvent.clientY - StudioState.pan.y) / StudioState.zoom;
+
+        const graph = getCurrentGraph();
+        const targetNode = graph.nodes.find(n => {
+            if (n.id === srcNode.id) return false;
+            const nw = n.width || 180;
+            const nh = n.height || 80;
+            return (upCanvasX >= n.x && upCanvasX <= n.x + nw &&
+                    upCanvasY >= n.y && upCanvasY <= n.y + nh);
+        });
+
+        if (targetNode) {
+            const newEdgeId = `edge_${Date.now().toString(36)}`;
+            const newEdge = {
+                id: newEdgeId,
+                source: srcNode.id,
+                target: targetNode.id,
+                label: "Data Flow"
+            };
+            graph.edges.push(newEdge);
+            pushHistoryState();
+            selectElement('edge', newEdgeId);
+
+            // Compute midpoint and open inline label editing immediately
+            const midX = (srcNode.x + targetNode.x) / 2 + 60;
+            const midY = (srcNode.y + targetNode.y) / 2 + 30;
+            startInlineEditEdge(newEdgeId, midX, midY);
+
+            if (window.showToast) window.showToast(`Connected flow: ${srcNode.label} ➔ ${targetNode.label}`, 'success');
+        }
+    }
+
+    window.addEventListener('mousemove', onDrawingMove);
+    window.addEventListener('mouseup', onDrawingUp);
+}
+
+// DRAW.IO FEATURE: 8-Point Interactive Node Resizing
+function startNodeResize(node, dir, e) {
+    const startClientX = e.clientX;
+    const startClientY = e.clientY;
+    const origX = node.x;
+    const origY = node.y;
+    const origW = node.width || 180;
+    const origH = node.height || 80;
+
+    function onResizeMove(moveEvent) {
+        const deltaX = (moveEvent.clientX - startClientX) / StudioState.zoom;
+        const deltaY = (moveEvent.clientY - startClientY) / StudioState.zoom;
+
+        let newX = origX;
+        let newY = origY;
+        let newW = origW;
+        let newH = origH;
+
+        if (dir.includes('e')) {
+            newW = Math.max(70, origW + deltaX);
+        }
+        if (dir.includes('s')) {
+            newH = Math.max(40, origH + deltaY);
+        }
+        if (dir.includes('w')) {
+            const possibleW = origW - deltaX;
+            if (possibleW >= 70) {
+                newW = possibleW;
+                newX = origX + deltaX;
+            }
+        }
+        if (dir.includes('n')) {
+            const possibleH = origH - deltaY;
+            if (possibleH >= 40) {
+                newH = possibleH;
+                newY = origY + deltaY;
+            }
+        }
+
+        if (StudioState.snapToGrid) {
+            newX = Math.round(newX / StudioState.gridSize) * StudioState.gridSize;
+            newY = Math.round(newY / StudioState.gridSize) * StudioState.gridSize;
+            newW = Math.round(newW / StudioState.gridSize) * StudioState.gridSize;
+            newH = Math.round(newH / StudioState.gridSize) * StudioState.gridSize;
+        }
+
+        node.x = newX;
+        node.y = newY;
+        node.width = newW;
+        node.height = newH;
+
+        const domNode = document.getElementById(`node_${node.id}`);
+        if (domNode) {
+            domNode.style.left = `${node.x}px`;
+            domNode.style.top = `${node.y}px`;
+            domNode.style.width = `${node.width}px`;
+            domNode.style.height = `${node.height}px`;
+        }
+        renderOnlyEdges();
+    }
+
+    function onResizeUp() {
+        window.removeEventListener('mousemove', onResizeMove);
+        window.removeEventListener('mouseup', onResizeUp);
+        pushHistoryState();
+        renderCanvas();
+    }
+
+    window.addEventListener('mousemove', onResizeMove);
+    window.addEventListener('mouseup', onResizeUp);
+}
+
+// DRAW.IO FEATURE: In-Place Inline Text Editing on Canvas
+function startInlineEditNode(nodeId, nodeEl) {
+    const graph = getCurrentGraph();
+    const node = graph.nodes.find(n => n.id === nodeId);
+    if (!node) return;
+
+    // Check if an editor is already open
+    const existing = nodeEl.querySelector('.inline-node-editor');
+    if (existing) return;
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'inline-node-editor';
+    input.value = node.label || '';
+
+    let saved = false;
+    function commit() {
+        if (saved) return;
+        saved = true;
+        const val = input.value.trim();
+        if (val && val !== node.label) {
+            node.label = val;
+            pushHistoryState();
+            updateInspector();
+        }
+        if (input.parentNode) input.parentNode.removeChild(input);
+        renderCanvas();
+    }
+
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            commit();
+        } else if (e.key === 'Escape') {
+            saved = true;
+            if (input.parentNode) input.parentNode.removeChild(input);
+            renderCanvas();
+        }
+    });
+
+    input.addEventListener('blur', commit);
+
+    nodeEl.appendChild(input);
+    input.focus();
+    input.select();
+}
+
+function startInlineEditEdge(edgeId, x, y) {
+    const graph = getCurrentGraph();
+    const edge = graph.edges.find(e => e.id === edgeId);
+    if (!edge) return;
+
+    const container = document.getElementById('nodesContainer');
+    if (!container) return;
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'inline-edge-editor';
+    input.value = edge.label || '';
+    input.style.left = `${x}px`;
+    input.style.top = `${y}px`;
+
+    let saved = false;
+    function commit() {
+        if (saved) return;
+        saved = true;
+        const val = input.value.trim();
+        if (val && val !== edge.label) {
+            edge.label = val;
+            pushHistoryState();
+            updateInspector();
+        }
+        if (input.parentNode) input.parentNode.removeChild(input);
+        renderCanvas();
+    }
+
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            commit();
+        } else if (e.key === 'Escape') {
+            saved = true;
+            if (input.parentNode) input.parentNode.removeChild(input);
+            renderCanvas();
+        }
+    });
+
+    input.addEventListener('blur', commit);
+
+    container.appendChild(input);
+    input.focus();
+    input.select();
+}
+
+// Drag & Drop Node Movement with Snap-to-Grid
 function startDraggingNode(node, e) {
     StudioState.draggingNode = node;
     const mouseCanvasX = (e.clientX - StudioState.pan.x) / StudioState.zoom;
@@ -369,8 +730,14 @@ function startDraggingNode(node, e) {
         if (!StudioState.draggingNode) return;
         const currentCanvasX = (moveEvent.clientX - StudioState.pan.x) / StudioState.zoom;
         const currentCanvasY = (moveEvent.clientY - StudioState.pan.y) / StudioState.zoom;
-        const newX = Math.round(currentCanvasX - StudioState.dragOffset.x);
-        const newY = Math.round(currentCanvasY - StudioState.dragOffset.y);
+        let newX = Math.round(currentCanvasX - StudioState.dragOffset.x);
+        let newY = Math.round(currentCanvasY - StudioState.dragOffset.y);
+
+        if (StudioState.snapToGrid) {
+            newX = Math.round(newX / StudioState.gridSize) * StudioState.gridSize;
+            newY = Math.round(newY / StudioState.gridSize) * StudioState.gridSize;
+        }
+
         StudioState.draggingNode.x = Math.max(10, newX);
         StudioState.draggingNode.y = Math.max(10, newY);
 
@@ -380,11 +747,13 @@ function startDraggingNode(node, e) {
             domNode.style.left = `${StudioState.draggingNode.x}px`;
             domNode.style.top = `${StudioState.draggingNode.y}px`;
         }
-        // Re-render SVG edges connected to this node
         renderOnlyEdges();
     }
 
     function onMouseUp() {
+        if (StudioState.draggingNode) {
+            pushHistoryState();
+        }
         StudioState.draggingNode = null;
         window.removeEventListener('mousemove', onMouseMove);
         window.removeEventListener('mouseup', onMouseUp);
@@ -399,7 +768,11 @@ function renderOnlyEdges() {
     const graph = getCurrentGraph();
     const edgesGroup = document.getElementById('edgesGroup');
     if (!edgesGroup) return;
+
+    const previewEl = document.getElementById('previewConnectionPath');
     edgesGroup.innerHTML = '';
+    if (previewEl) edgesGroup.appendChild(previewEl);
+
     const nodeMap = {};
     graph.nodes.forEach(n => nodeMap[n.id] = n);
 
@@ -411,6 +784,113 @@ function renderOnlyEdges() {
             renderEdge(edge, sNode, tNode, edgesGroup, isSelected);
         }
     });
+}
+
+// DRAW.IO FEATURE: Drag and Drop from Palette to Canvas
+function onPaletteDragStart(e, type) {
+    e.dataTransfer.setData('text/plain', type);
+}
+
+function onCanvasDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+}
+
+function onCanvasDrop(e) {
+    e.preventDefault();
+    const type = e.dataTransfer.getData('text/plain');
+    if (!type) return;
+
+    let canvasX = (e.clientX - StudioState.pan.x) / StudioState.zoom;
+    let canvasY = (e.clientY - StudioState.pan.y) / StudioState.zoom;
+
+    if (StudioState.snapToGrid) {
+        canvasX = Math.round(canvasX / StudioState.gridSize) * StudioState.gridSize;
+        canvasY = Math.round(canvasY / StudioState.gridSize) * StudioState.gridSize;
+    }
+
+    addNode(type, canvasX, canvasY);
+}
+
+// DRAW.IO FEATURE: Quick Color Styling
+function setSelectionColor(fillColor, borderColor) {
+    if (!StudioState.selected || StudioState.selected.type !== 'node') {
+        if (window.showToast) window.showToast('Please select a shape first to color it', 'warning');
+        return;
+    }
+    const graph = getCurrentGraph();
+    const node = graph.nodes.find(n => n.id === StudioState.selected.id);
+    if (!node) return;
+
+    node.fillColor = fillColor;
+    node.borderColor = borderColor || fillColor;
+    pushHistoryState();
+    renderCanvas();
+    if (window.showToast) window.showToast('Updated shape color', 'success');
+}
+
+// DRAW.IO FEATURE: Duplicate Selected Element
+function duplicateSelectedElement() {
+    if (!StudioState.selected || StudioState.selected.type !== 'node') {
+        if (window.showToast) window.showToast('Select a shape to duplicate (Ctrl+D)', 'info');
+        return;
+    }
+    const graph = getCurrentGraph();
+    const original = graph.nodes.find(n => n.id === StudioState.selected.id);
+    if (!original) return;
+
+    const newId = `${original.type}_${Date.now().toString(36)}`;
+    const cloned = JSON.parse(JSON.stringify(original));
+    cloned.id = newId;
+    cloned.x += 30;
+    cloned.y += 30;
+    cloned.label = `${original.label} (Copy)`;
+
+    graph.nodes.push(cloned);
+    pushHistoryState();
+    selectElement('node', newId);
+    if (window.showToast) window.showToast(`Duplicated: ${cloned.label}`, 'success');
+}
+
+// DRAW.IO FEATURE: Snap-to-Grid Toggle
+function toggleSnapGrid() {
+    StudioState.snapToGrid = !StudioState.snapToGrid;
+    const btn = document.getElementById('btnSnapGrid');
+    if (btn) {
+        if (StudioState.snapToGrid) {
+            btn.classList.add('btn-primary');
+            btn.classList.remove('btn-outline-secondary');
+        } else {
+            btn.classList.remove('btn-primary');
+            btn.classList.add('btn-outline-secondary');
+        }
+    }
+    if (window.showToast) window.showToast(`Grid Snapping: ${StudioState.snapToGrid ? 'ON (10px)' : 'OFF'}`, 'info');
+}
+
+// DRAW.IO FEATURE: Tool Selector
+function setStudioTool(tool) {
+    StudioState.activeTool = tool;
+    ['toolPointer', 'toolConnector', 'toolText'].forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) btn.classList.remove('active', 'btn-primary');
+    });
+
+    const activeBtn = document.getElementById(tool === 'pointer' ? 'toolPointer' : (tool === 'connector' ? 'toolConnector' : 'toolText'));
+    if (activeBtn) activeBtn.classList.add('active', 'btn-primary');
+
+    const viewport = document.getElementById('canvasViewport');
+    if (tool === 'connector') {
+        toggleConnectMode(true);
+    } else {
+        toggleConnectMode(false);
+    }
+
+    if (tool === 'text') {
+        if (viewport) viewport.style.cursor = 'text';
+    } else if (viewport) {
+        viewport.style.cursor = '';
+    }
 }
 
 // Selection Handling
@@ -435,7 +915,7 @@ function setupCanvasEvents() {
         zoomCanvas(delta);
     });
 
-    // Keyboard shortcuts (Delete, Escape, Ctrl+Z)
+    // Keyboard Shortcuts (draw.io shortcuts)
     window.addEventListener('keydown', (e) => {
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
@@ -448,17 +928,61 @@ function setupCanvasEvents() {
                 toggleConnectMode(false);
             }
             clearSelection();
+        } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+            e.preventDefault();
+            if (e.shiftKey) {
+                redo();
+            } else {
+                undo();
+            }
+        } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+            e.preventDefault();
+            redo();
+        } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') {
+            e.preventDefault();
+            duplicateSelectedElement();
+        } else if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+            // Nudge selected node
+            if (StudioState.selected && StudioState.selected.type === 'node') {
+                e.preventDefault();
+                const graph = getCurrentGraph();
+                const node = graph.nodes.find(n => n.id === StudioState.selected.id);
+                if (node) {
+                    const step = e.shiftKey ? 10 : 2;
+                    if (e.key === 'ArrowLeft') node.x -= step;
+                    if (e.key === 'ArrowRight') node.x += step;
+                    if (e.key === 'ArrowUp') node.y -= step;
+                    if (e.key === 'ArrowDown') node.y += step;
+                    renderCanvas();
+                }
+            }
+        } else if (e.key === 'v' || e.key === 'V') {
+            setStudioTool('pointer');
+        } else if (e.key === 'c' || e.key === 'C') {
+            setStudioTool('connector');
+        } else if (e.key === 't' || e.key === 'T') {
+            setStudioTool('text');
         }
     });
 }
 
 function onCanvasMouseDown(e) {
     if (e.target.id === 'canvasViewport' || e.target.id === 'svgEdgesLayer') {
+        if (StudioState.activeTool === 'text') {
+            // Click to add text note at cursor
+            const canvasX = Math.round((e.clientX - StudioState.pan.x) / StudioState.zoom);
+            const canvasY = Math.round((e.clientY - StudioState.pan.y) / StudioState.zoom);
+            addNode('note', canvasX, canvasY);
+            setStudioTool('pointer');
+            return;
+        }
+
         if (StudioState.isConnecting) {
             toggleConnectMode(false);
             return;
         }
         clearSelection();
+
         // Start Canvas Panning
         StudioState.isPanning = true;
         StudioState.panStart = {
@@ -512,7 +1036,7 @@ function resetCanvasZoom() {
 }
 
 // Adding Elements
-function addNode(type) {
+function addNode(type, customX = null, customY = null) {
     const graph = getCurrentGraph();
     const newId = `${type}_${Date.now().toString(36)}`;
     let label = 'New Node';
@@ -534,28 +1058,42 @@ function addNode(type) {
         number = `D${dsCount + 1}`;
         label = `Data Store ${number}`;
         w = 200; h = 65;
+    } else if (type === 'decision') {
+        label = `Decision Condition`;
+        w = 150; h = 90;
+    } else if (type === 'note') {
+        label = `Specification Note`;
+        w = 170; h = 90;
+    } else if (type === 'boundary') {
+        label = `Subsystem Boundary`;
+        w = 320; h = 220;
     }
 
-    // Place near center of visible viewport
-    const x = Math.round((-StudioState.pan.x + 400) / StudioState.zoom);
-    const y = Math.round((-StudioState.pan.y + 250) / StudioState.zoom);
+    let x = customX !== null ? customX : Math.round((-StudioState.pan.x + 400) / StudioState.zoom);
+    let y = customY !== null ? customY : Math.round((-StudioState.pan.y + 250) / StudioState.zoom);
+
+    if (StudioState.snapToGrid) {
+        x = Math.round(x / StudioState.gridSize) * StudioState.gridSize;
+        y = Math.round(y / StudioState.gridSize) * StudioState.gridSize;
+    }
 
     graph.nodes.push({
         id: newId,
         type: type,
         number: number,
         label: label,
-        x: Math.max(50, x),
-        y: Math.max(50, y),
+        x: Math.max(20, x),
+        y: Math.max(20, y),
         width: w,
         height: h
     });
 
+    pushHistoryState();
     selectElement('node', newId);
     if (window.showToast) window.showToast(`Added ${type}: "${label}"`, 'success');
 }
 
-// Connect Flow Mode (Drawing arrows between nodes)
+// Connect Flow Mode (Drawing arrows between nodes via button)
 function toggleConnectMode(forceState) {
     if (typeof forceState === 'boolean') {
         StudioState.isConnecting = forceState;
@@ -569,14 +1107,14 @@ function toggleConnectMode(forceState) {
 
     if (StudioState.isConnecting) {
         StudioState.connectSource = null;
-        if (btn) btn.className = 'btn btn-sm btn-warning w-100 py-2 fw-bold shadow-sm';
+        if (btn) btn.classList.add('btn-warning', 'text-dark');
         if (lbl) lbl.textContent = 'Click Source Node...';
         if (viewport) viewport.classList.add('connecting');
-        if (window.showToast) window.showToast('Select Source Node to begin data flow arrow', 'warning');
+        if (window.showToast) window.showToast('Click Source Node (or drag from any blue port dot)', 'info');
     } else {
         StudioState.connectSource = null;
-        if (btn) btn.className = 'btn btn-sm btn-outline-warning w-100 py-2';
-        if (lbl) lbl.textContent = 'Connect Data Flow (Arrow)';
+        if (btn) btn.classList.remove('btn-warning', 'text-dark');
+        if (lbl) lbl.textContent = 'Draw Arrow / Flow';
         if (viewport) viewport.classList.remove('connecting');
     }
 }
@@ -585,13 +1123,11 @@ function handleConnectClick(nodeId) {
     if (!StudioState.isConnecting) return;
 
     if (!StudioState.connectSource) {
-        // First click: select source
         StudioState.connectSource = nodeId;
         const lbl = document.getElementById('connectModeLabel');
         if (lbl) lbl.textContent = 'Click Target Node...';
         if (window.showToast) window.showToast('Now click Target Node to connect', 'info');
     } else {
-        // Second click: select target
         const sourceId = StudioState.connectSource;
         const targetId = nodeId;
 
@@ -600,7 +1136,7 @@ function handleConnectClick(nodeId) {
             return;
         }
 
-        const flowLabel = prompt("Enter Data Flow Label (e.g. 'User Credentials', 'Payment Receipt', 'Transaction Record'):", "Data Flow");
+        const flowLabel = prompt("Enter Data Flow Label (e.g. 'User Credentials', 'Payment Receipt'):", "Data Flow");
         if (flowLabel !== null) {
             const graph = getCurrentGraph();
             const newEdgeId = `edge_${Date.now().toString(36)}`;
@@ -610,6 +1146,7 @@ function handleConnectClick(nodeId) {
                 target: targetId,
                 label: flowLabel.trim() || "Data Flow"
             });
+            pushHistoryState();
             toggleConnectMode(false);
             selectElement('edge', newEdgeId);
             if (window.showToast) window.showToast(`Connected flow: "${flowLabel}"`, 'success');
@@ -619,7 +1156,7 @@ function handleConnectClick(nodeId) {
     }
 }
 
-// Edit Modal Handling
+// Edit Modal Handling (Secondary dialog for detailed properties)
 function openEditModal(type, id) {
     const graph = getCurrentGraph();
     const modalEl = document.getElementById('editElementModal');
@@ -682,6 +1219,7 @@ function saveElementEdit() {
         }
     }
 
+    pushHistoryState();
     const modalEl = document.getElementById('editElementModal');
     const modal = bootstrap.Modal.getInstance(modalEl);
     if (modal) modal.hide();
@@ -697,16 +1235,18 @@ function deleteSelectedElement() {
 
     if (type === 'node') {
         graph.nodes = graph.nodes.filter(n => n.id !== id);
-        // Also remove any edges connected to this node
         graph.edges = graph.edges.filter(e => e.source !== id && e.target !== id);
     } else {
         graph.edges = graph.edges.filter(e => e.id !== id);
     }
 
+    pushHistoryState();
     StudioState.selected = null;
     const modalEl = document.getElementById('editElementModal');
-    const modal = bootstrap.Modal.getInstance(modalEl);
-    if (modal) modal.hide();
+    if (modalEl) {
+        const modal = bootstrap.Modal.getInstance(modalEl);
+        if (modal) modal.hide();
+    }
 
     renderCanvas();
     if (window.showToast) window.showToast('Element deleted', 'secondary');
@@ -721,7 +1261,7 @@ function updateInspector() {
     if (!StudioState.selected) {
         typeBadge.textContent = "No Selection";
         typeBadge.className = "badge bg-secondary rounded-pill";
-        drawerProps.innerHTML = `<p class="text-secondary small">Click on any Entity, Process, Data Store, or Data Flow to view and edit its software engineering attributes.</p>`;
+        drawerProps.innerHTML = `<p class="text-secondary small">Click or double-click on any Shape or Data Flow arrow to view and edit its attributes in real time.</p>`;
         return;
     }
 
@@ -737,7 +1277,7 @@ function updateInspector() {
 
         drawerProps.innerHTML = `
             <div class="mb-2">
-                <label class="form-label small text-secondary fw-semibold mb-1">Label</label>
+                <label class="form-label small text-secondary fw-semibold mb-1">Label (Double-click node to edit inline)</label>
                 <input type="text" class="form-control form-control-sm" value="${escapeHtml(node.label)}" onchange="updateSelectedNodeProp('label', this.value)">
             </div>
             ${node.type !== 'entity' ? `
@@ -745,12 +1285,23 @@ function updateInspector() {
                 <label class="form-label small text-secondary fw-semibold mb-1">Number / ID</label>
                 <input type="text" class="form-control form-control-sm font-mono" value="${escapeHtml(node.number || '')}" onchange="updateSelectedNodeProp('number', this.value)">
             </div>` : ''}
+            <div class="row g-2 mb-2">
+                <div class="col-6">
+                    <label class="form-label small text-secondary fw-semibold mb-1">Width (px)</label>
+                    <input type="number" class="form-control form-control-sm" value="${node.width || 180}" onchange="updateSelectedNodeProp('width', parseInt(this.value) || 180)">
+                </div>
+                <div class="col-6">
+                    <label class="form-label small text-secondary fw-semibold mb-1">Height (px)</label>
+                    <input type="number" class="form-control form-control-sm" value="${node.height || 80}" onchange="updateSelectedNodeProp('height', parseInt(this.value) || 80)">
+                </div>
+            </div>
             <div class="mb-2">
                 <label class="form-label small text-secondary fw-semibold mb-1">Description / Spec</label>
                 <textarea class="form-control form-control-sm" rows="2" onchange="updateSelectedNodeProp('description', this.value)">${escapeHtml(node.description || '')}</textarea>
             </div>
             <div class="d-flex gap-2 mt-3">
-                <button class="btn btn-sm btn-outline-danger w-100" onclick="deleteSelectedElement()"><i class="bi bi-trash me-1"></i> Delete Node</button>
+                <button class="btn btn-sm btn-outline-info w-50" onclick="duplicateSelectedElement()"><i class="bi bi-copy me-1"></i> Duplicate</button>
+                <button class="btn btn-sm btn-outline-danger w-50" onclick="deleteSelectedElement()"><i class="bi bi-trash me-1"></i> Delete</button>
             </div>
         `;
     } else {
@@ -765,7 +1316,7 @@ function updateInspector() {
 
         drawerProps.innerHTML = `
             <div class="mb-2">
-                <label class="form-label small text-secondary fw-semibold mb-1">Flow Label</label>
+                <label class="form-label small text-secondary fw-semibold mb-1">Flow Label (Double-click arrow to edit inline)</label>
                 <input type="text" class="form-control form-control-sm" value="${escapeHtml(edge.label)}" onchange="updateSelectedEdgeProp('label', this.value)">
             </div>
             <div class="small text-secondary mb-1">Source: <span class="fw-semibold text-white">${escapeHtml(sNode ? sNode.label : edge.source)}</span></div>
@@ -783,6 +1334,7 @@ function updateSelectedNodeProp(prop, val) {
     const node = graph.nodes.find(n => n.id === StudioState.selected.id);
     if (node) {
         node[prop] = val;
+        pushHistoryState();
         renderCanvas();
     }
 }
@@ -793,6 +1345,7 @@ function updateSelectedEdgeProp(prop, val) {
     const edge = graph.edges.find(e => e.id === StudioState.selected.id);
     if (edge) {
         edge[prop] = val;
+        pushHistoryState();
         renderCanvas();
     }
 }
@@ -898,6 +1451,7 @@ async function autoLayoutCurrentLevel() {
         const arranged = await response.json();
         if (arranged && arranged.nodes) {
             StudioState.levels[StudioState.currentLevel] = arranged;
+            pushHistoryState();
             renderCanvas();
             if (window.showToast) window.showToast('Hierarchical auto-layout applied!', 'success');
         }
@@ -929,25 +1483,31 @@ async function executeAIGeneration() {
     }
 
     btn.disabled = true;
-    btn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span> Synthesizing DFD...`;
+    btn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span> Analyzing & Generating DFD...`;
 
     try {
-        const response = await fetch('/api/generate/', {
+        const response = await fetch('/api/generate-dfd/', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'X-CSRFToken': getCsrfToken()
             },
-            body: JSON.stringify({ prompt, system_name: systemName })
+            body: JSON.stringify({
+                prompt: prompt,
+                system_name: systemName || "Custom AI Architecture"
+            })
         });
-
         const data = await response.json();
-        if (data.level0 && data.level1) {
-            StudioState.projectName = data.system_name || "Generated System";
+
+        if (data.status === 'success') {
+            StudioState.projectName = data.project_name || "AI Generated System";
             document.getElementById('projectTitleInput').value = StudioState.projectName;
-            StudioState.levels[0] = data.level0;
-            StudioState.levels[1] = data.level1;
+            StudioState.levels[0] = data.levels[0] || { nodes: [], edges: [] };
+            StudioState.levels[1] = data.levels[1] || { nodes: [], edges: [] };
+            StudioState.levels[2] = data.levels[2] || { nodes: [], edges: [] };
             StudioState.currentLevel = 0;
+            StudioState.selected = null;
+            pushHistoryState();
             updateLevelButtons();
             renderCanvas();
 
@@ -1138,18 +1698,17 @@ function exportPNG(title, levelStr) {
         canvas.width = 1600;
         canvas.height = 1000;
         const ctx = canvas.getContext('2d');
-        // Background
-        ctx.fillStyle = '#0f172a';
+        ctx.fillStyle = "#0f172a";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(img, 0, 0);
 
-        const pngUrl = canvas.toDataURL('image/png');
+        const pngUrl = canvas.toDataURL("image/png");
         const a = document.createElement('a');
         a.href = pngUrl;
         a.download = `${title}_${levelStr}.png`;
         a.click();
         URL.revokeObjectURL(url);
-        if (window.showToast) window.showToast('High-Resolution PNG exported!', 'success');
+        if (window.showToast) window.showToast('High-Res PNG exported!', 'success');
     };
     img.src = url;
 }
@@ -1176,10 +1735,13 @@ function generateStandaloneSVG() {
     graph.nodes.forEach(n => {
         const w = n.width || 180;
         const h = n.height || 80;
+        const fill = n.fillColor || (n.type === 'entity' ? '#0369a1' : (n.type === 'process' ? '#4338ca' : '#047857'));
+        const stroke = n.borderColor || (n.type === 'entity' ? '#38bdf8' : (n.type === 'process' ? '#818cf8' : '#34d399'));
+
         if (n.type === 'entity') {
             nodesSvg += `
                 <g transform="translate(${n.x}, ${n.y})">
-                    <rect width="${w}" height="${h}" rx="4" fill="#0369a1" stroke="#38bdf8" stroke-width="2"/>
+                    <rect width="${w}" height="${h}" rx="4" fill="${fill}" stroke="${stroke}" stroke-width="2"/>
                     <text x="${w/2}" y="${h/2 + 5}" text-anchor="middle" fill="#f0f9ff" font-family="sans-serif" font-weight="bold" font-size="13">${escapeHtml(n.label)}</text>
                 </g>
             `;
@@ -1188,20 +1750,18 @@ function generateStandaloneSVG() {
             if (StudioState.notationStyle === 'gane_sarson') {
                 nodesSvg += `
                     <g transform="translate(${n.x}, ${n.y})">
-                        <rect width="${w}" height="${h}" rx="14" fill="#4338ca" stroke="#818cf8" stroke-width="2"/>
+                        <rect width="${w}" height="${h}" rx="14" fill="${fill}" stroke="${stroke}" stroke-width="2"/>
                         <rect width="${w}" height="22" rx="14" fill="rgba(0,0,0,0.3)"/>
                         <text x="${w/2}" y="16" text-anchor="middle" fill="#c7d2fe" font-family="monospace" font-size="11">${escapeHtml(num)}</text>
                         <text x="${w/2}" y="${(h/2) + 12}" text-anchor="middle" fill="#eef2ff" font-family="sans-serif" font-weight="bold" font-size="12">${escapeHtml(n.label)}</text>
                     </g>
                 `;
             } else {
-                const r = Math.min(w, h) / 2;
                 nodesSvg += `
-                    <g transform="translate(${n.x + r}, ${n.y + r})">
-                        <circle r="${r}" fill="#4338ca" stroke="#818cf8" stroke-width="2"/>
-                        <text x="0" y="-8" text-anchor="middle" fill="#c7d2fe" font-family="monospace" font-size="11">${escapeHtml(num)}</text>
-                        <line x1="-${r*0.7}" y1="-2" x2="${r*0.7}" y2="-2" stroke="rgba(255,255,255,0.3)"/>
-                        <text x="0" y="14" text-anchor="middle" fill="#eef2ff" font-family="sans-serif" font-weight="bold" font-size="11">${escapeHtml(n.label)}</text>
+                    <g transform="translate(${n.x}, ${n.y})">
+                        <ellipse cx="${w/2}" cy="${h/2}" rx="${w/2}" ry="${h/2}" fill="${fill}" stroke="${stroke}" stroke-width="2"/>
+                        <text x="${w/2}" y="${h/2 - 4}" text-anchor="middle" fill="#c7d2fe" font-family="monospace" font-size="11">${escapeHtml(num)}</text>
+                        <text x="${w/2}" y="${h/2 + 14}" text-anchor="middle" fill="#eef2ff" font-family="sans-serif" font-weight="bold" font-size="12">${escapeHtml(n.label)}</text>
                     </g>
                 `;
             }
@@ -1209,31 +1769,56 @@ function generateStandaloneSVG() {
             const dsNum = n.number || 'D1';
             nodesSvg += `
                 <g transform="translate(${n.x}, ${n.y})">
-                    <rect width="${w}" height="${h}" fill="#047857" stroke="#34d399" stroke-width="2"/>
-                    <rect width="40" height="${h}" fill="rgba(0,0,0,0.3)"/>
-                    <text x="20" y="${h/2 + 5}" text-anchor="middle" fill="#a7f3d0" font-family="monospace" font-size="12">${escapeHtml(dsNum)}</text>
-                    <text x="${(w + 40)/2}" y="${h/2 + 5}" text-anchor="middle" fill="#ecfdf5" font-family="sans-serif" font-weight="bold" font-size="12">${escapeHtml(n.label)}</text>
+                    <rect width="${w}" height="${h}" rx="2" fill="${fill}" stroke="${stroke}" stroke-width="2"/>
+                    <rect width="40" height="${h}" fill="rgba(0,0,0,0.25)"/>
+                    <text x="20" y="${h/2 + 4}" text-anchor="middle" fill="#a7f3d0" font-family="monospace" font-size="11">${escapeHtml(dsNum)}</text>
+                    <text x="${(w + 40)/2}" y="${h/2 + 4}" text-anchor="middle" fill="#ecfdf5" font-family="sans-serif" font-size="12">${escapeHtml(n.label)}</text>
+                </g>
+            `;
+        } else if (n.type === 'decision') {
+            const pts = `${w/2},0 ${w},${h/2} ${w/2},${h} 0,${h/2}`;
+            nodesSvg += `
+                <g transform="translate(${n.x}, ${n.y})">
+                    <polygon points="${pts}" fill="${n.fillColor || '#6d28d9'}" stroke="${n.borderColor || '#a78bfa'}" stroke-width="2"/>
+                    <text x="${w/2}" y="${h/2 + 4}" text-anchor="middle" fill="#f5f3ff" font-family="sans-serif" font-weight="bold" font-size="12">${escapeHtml(n.label)}</text>
+                </g>
+            `;
+        } else if (n.type === 'note') {
+            nodesSvg += `
+                <g transform="translate(${n.x}, ${n.y})">
+                    <rect width="${w}" height="${h}" fill="${n.fillColor || '#fef08a'}" stroke="${n.borderColor || '#facc15'}" stroke-width="1"/>
+                    <text x="10" y="24" fill="#854d0e" font-family="sans-serif" font-size="11">${escapeHtml(n.label)}</text>
+                </g>
+            `;
+        } else if (n.type === 'boundary') {
+            nodesSvg += `
+                <g transform="translate(${n.x}, ${n.y})">
+                    <rect width="${w}" height="${h}" rx="8" fill="rgba(56, 189, 248, 0.05)" stroke="${n.borderColor || '#38bdf8'}" stroke-width="2" stroke-dasharray="6,4"/>
+                    <text x="12" y="20" fill="#38bdf8" font-family="sans-serif" font-weight="bold" font-size="11">${escapeHtml(n.label)}</text>
                 </g>
             `;
         }
     });
 
     return `
-    <svg xmlns="http://www.w3.org/2000/svg" width="${viewBoxW}" height="${viewBoxH}" viewBox="${viewBoxX} ${viewBoxY} ${viewBoxW} ${viewBoxH}">
-        <style>
-            .flow-path { stroke: #94a3b8; stroke-width: 2.2; fill: none; }
-            .flow-label { font-family: sans-serif; font-size: 11px; font-weight: 600; fill: #ffffff; }
-            .flow-label-bg { fill: #0f172a; stroke: #475569; stroke-width: 1px; rx: 4px; ry: 4px; }
-        </style>
-        <defs>
-            <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-                <polygon points="0 0, 10 3.5, 0 7" fill="#94a3b8" />
-            </marker>
-        </defs>
-        <rect x="${viewBoxX}" y="${viewBoxY}" width="${viewBoxW}" height="${viewBoxH}" fill="#0b1120"/>
-        <g id="exportedEdges">${edgesGroup}</g>
-        <g id="exportedNodes">${nodesSvg}</g>
-    </svg>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBoxX} ${viewBoxY} ${viewBoxW} ${viewBoxH}" width="${viewBoxW}" height="${viewBoxH}">
+            <defs>
+                <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                    <polygon points="0 0, 10 3.5, 0 7" fill="#94a3b8" />
+                </marker>
+                <marker id="arrowhead-selected" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                    <polygon points="0 0, 10 3.5, 0 7" fill="#38bdf8" />
+                </marker>
+            </defs>
+            <style>
+                .flow-path { stroke: #94a3b8; stroke-width: 2.2; fill: none; }
+                .flow-label { font-family: sans-serif; font-size: 11px; font-weight: bold; fill: #ffffff; }
+                .flow-label-bg { fill: #0f172a; stroke: #475569; stroke-width: 1px; rx: 4px; }
+            </style>
+            <rect x="${viewBoxX}" y="${viewBoxY}" width="${viewBoxW}" height="${viewBoxH}" fill="#0f172a"/>
+            <g id="exportEdges">${edgesGroup}</g>
+            <g id="exportNodes">${nodesSvg}</g>
+        </svg>
     `;
 }
 
@@ -1250,17 +1835,63 @@ function importJSONFile(event) {
                 StudioState.notationStyle = data.notationStyle || "gane_sarson";
                 StudioState.levels = data.levels;
                 StudioState.currentLevel = data.currentLevel || 0;
+                pushHistoryState();
                 updateLevelButtons();
                 renderCanvas();
                 if (window.showToast) window.showToast('Project imported successfully!', 'success');
             } else {
-                alert("Invalid DFD JSON file structure.");
+                alert("Invalid DFD project JSON format.");
             }
         } catch (err) {
-            alert("Error parsing JSON file: " + err.message);
+            alert("Failed to parse JSON: " + err.message);
         }
     };
     reader.readAsText(file);
+}
+
+// Mermaid.js Syntax Generator
+function openMermaidModal() {
+    const graph = getCurrentGraph();
+    let syntax = 'graph TD\n';
+
+    graph.nodes.forEach(n => {
+        const safeId = n.id.replace(/[^a-zA-Z0-9]/g, '_');
+        const safeLabel = (n.label || '').replace(/"/g, "'");
+        if (n.type === 'entity') {
+            syntax += `    ${safeId}["[Entity] ${safeLabel}"]\n`;
+        } else if (n.type === 'process') {
+            const num = n.number || '0';
+            syntax += `    ${safeId}(("${num}: ${safeLabel}"))\n`;
+        } else if (n.type === 'datastore') {
+            syntax += `    ${safeId}[("[(DataStore)] ${safeLabel}")]\n`;
+        } else if (n.type === 'decision') {
+            syntax += `    ${safeId}{"${safeLabel}"}\n`;
+        } else {
+            syntax += `    ${safeId}["${safeLabel}"]\n`;
+        }
+    });
+
+    graph.edges.forEach(e => {
+        const s = e.source.replace(/[^a-zA-Z0-9]/g, '_');
+        const t = e.target.replace(/[^a-zA-Z0-9]/g, '_');
+        const lbl = (e.label || '').replace(/"/g, "'");
+        syntax += `    ${s} -->|${lbl}| ${t}\n`;
+    });
+
+    const modalEl = document.getElementById('mermaidModal');
+    const codeEl = document.getElementById('mermaidCodeBlock');
+    if (codeEl) codeEl.textContent = syntax;
+    if (modalEl) {
+        const modal = new bootstrap.Modal(modalEl);
+        modal.show();
+    }
+}
+
+function copyMermaidCode() {
+    const code = document.getElementById('mermaidCodeBlock').textContent;
+    navigator.clipboard.writeText(code).then(() => {
+        if (window.showToast) window.showToast('Mermaid syntax copied to clipboard!', 'info');
+    });
 }
 
 // Helpers
@@ -1275,6 +1906,10 @@ function escapeHtml(text) {
 }
 
 function getCsrfToken() {
-    const cookie = document.cookie.split('; ').find(row => row.startsWith('csrftoken='));
-    return cookie ? cookie.split('=')[1] : '';
+    const cookies = document.cookie.split(';');
+    for (let c of cookies) {
+        const [k, v] = c.trim().split('=');
+        if (k === 'csrftoken') return decodeURIComponent(v);
+    }
+    return '';
 }

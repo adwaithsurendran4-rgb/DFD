@@ -292,6 +292,176 @@
         right: 330px;
         z-index: 30;
     }
+
+    /* Connection Ports (draw.io style anchor points) */
+    .connection-port {
+        position: absolute;
+        width: 11px;
+        height: 11px;
+        background: #38bdf8;
+        border: 2px solid #ffffff;
+        border-radius: 50%;
+        cursor: crosshair;
+        z-index: 25;
+        opacity: 0;
+        transition: opacity 0.12s, transform 0.12s, background-color 0.12s;
+        transform: translate(-50%, -50%);
+        box-shadow: 0 0 6px rgba(56, 189, 248, 0.9);
+        pointer-events: auto;
+    }
+    .dfd-node:hover .connection-port,
+    .dfd-node.selected .connection-port,
+    .canvas-viewport.connecting .connection-port {
+        opacity: 0.95;
+    }
+    .connection-port:hover {
+        transform: translate(-50%, -50%) scale(1.4);
+        background: #0284c7;
+        opacity: 1;
+    }
+    .port-n { top: 0%; left: 50%; }
+    .port-s { top: 100%; left: 50%; }
+    .port-w { top: 50%; left: 0%; }
+    .port-e { top: 50%; left: 100%; }
+
+    /* Resize Handles (draw.io style 8-point handles) */
+    .resize-handle {
+        position: absolute;
+        width: 9px;
+        height: 9px;
+        background: #ffffff;
+        border: 1.5px solid #0284c7;
+        border-radius: 1px;
+        z-index: 28;
+        pointer-events: auto;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    }
+    .resize-handle-nw { top: -4.5px; left: -4.5px; cursor: nwse-resize; }
+    .resize-handle-n  { top: -4.5px; left: calc(50% - 4.5px); cursor: ns-resize; }
+    .resize-handle-ne { top: -4.5px; right: -4.5px; cursor: nesw-resize; }
+    .resize-handle-e  { top: calc(50% - 4.5px); right: -4.5px; cursor: ew-resize; }
+    .resize-handle-se { bottom: -4.5px; right: -4.5px; cursor: nwse-resize; }
+    .resize-handle-s  { bottom: -4.5px; left: calc(50% - 4.5px); cursor: ns-resize; }
+    .resize-handle-sw { bottom: -4.5px; left: -4.5px; cursor: nesw-resize; }
+    .resize-handle-w  { top: calc(50% - 4.5px); left: -4.5px; cursor: ew-resize; }
+
+    /* Inline Text Editor (draw.io style in-place editing) */
+    .inline-node-editor {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: rgba(15, 23, 42, 0.98);
+        color: #ffffff;
+        border: 2px solid #38bdf8;
+        border-radius: 6px;
+        padding: 4px 8px;
+        font-family: inherit;
+        font-size: 0.85rem;
+        font-weight: 600;
+        text-align: center;
+        outline: none;
+        z-index: 60;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        min-width: 120px;
+        width: 92%;
+        pointer-events: auto;
+    }
+    .inline-edge-editor {
+        position: absolute;
+        background: rgba(15, 23, 42, 0.98);
+        color: #f1f5f9;
+        border: 2px solid #38bdf8;
+        border-radius: 6px;
+        padding: 3px 8px;
+        font-family: 'Plus Jakarta Sans', sans-serif;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-align: center;
+        outline: none;
+        z-index: 60;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        transform: translate(-50%, -50%);
+        pointer-events: auto;
+    }
+
+    /* Decision Node (Diamond) */
+    .node-decision {
+        background: #6d28d9;
+        color: #f5f3ff;
+        border: 2px solid #a78bfa;
+        clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+        box-shadow: 0 4px 10px rgba(109, 40, 217, 0.25);
+        padding: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    /* Sticky Note (Annotation) */
+    .node-note {
+        background: #fef08a;
+        color: #854d0e;
+        border: 1px solid #facc15;
+        border-radius: 3px;
+        box-shadow: 2px 4px 8px rgba(0, 0, 0, 0.15);
+        padding: 10px;
+        text-align: left;
+        font-size: 0.8rem;
+        font-weight: 500;
+        display: flex;
+        justify-content: flex-start;
+        align-items: flex-start;
+    }
+
+    /* System Boundary Container (Group box) */
+    .node-boundary {
+        background: rgba(56, 189, 248, 0.04);
+        color: #38bdf8;
+        border: 2px dashed #38bdf8;
+        border-radius: 8px;
+        padding: 8px;
+        display: flex;
+        justify-content: flex-start;
+        align-items: flex-start;
+        font-size: 0.75rem;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+    }
+
+    /* Draw.io Secondary Action Toolbar */
+    .drawio-toolbar {
+        position: absolute;
+        top: 66px;
+        left: 304px;
+        z-index: 29;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 12px;
+    }
+    .drawio-tool-btn {
+        width: 30px;
+        height: 30px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 6px;
+        font-size: 0.95rem;
+    }
+    .color-swatch {
+        width: 17px;
+        height: 17px;
+        border-radius: 50%;
+        cursor: pointer;
+        border: 1.5px solid rgba(255, 255, 255, 0.4);
+        transition: transform 0.12s, box-shadow 0.12s;
+    }
+    .color-swatch:hover {
+        transform: scale(1.3);
+        box-shadow: 0 0 6px rgba(255,255,255,0.8);
+    }
 </style>
 {% endblock %}
 
@@ -350,12 +520,15 @@
 
         <!-- Add Element Palette -->
         <div class="mb-3">
-            <label class="form-label text-uppercase text-secondary fw-bold" style="font-size: 0.7rem; letter-spacing: 0.5px;">
-                <i class="bi bi-plus-circle me-1 text-success"></i> Add DFD Elements
-            </label>
-            <div class="d-flex flex-column gap-2">
+            <div class="d-flex justify-content-between align-items-center mb-1">
+                <label class="form-label text-uppercase text-secondary fw-bold mb-0" style="font-size: 0.7rem; letter-spacing: 0.5px;">
+                    <i class="bi bi-plus-circle me-1 text-success"></i> Shape Palette
+                </label>
+                <span class="badge text-secondary-emphasis" style="font-size: 0.65rem;">Drag & Drop</span>
+            </div>
+            <div class="d-flex flex-column gap-2 mt-2">
                 <!-- External Entity -->
-                <div class="palette-item p-2 rounded-2 border d-flex align-items-center justify-content-between" onclick="addNode('entity')">
+                <div class="palette-item p-2 rounded-2 border d-flex align-items-center justify-content-between" draggable="true" ondragstart="onPaletteDragStart(event, 'entity')" onclick="addNode('entity')" title="Click or Drag onto Canvas">
                     <div class="d-flex align-items-center gap-2">
                         <div class="p-1 rounded bg-info bg-opacity-25 text-info border border-info">
                             <i class="bi bi-person-badge"></i>
@@ -365,11 +538,11 @@
                             <div class="text-secondary" style="font-size: 0.68rem;">User, Bank, Sensor, Admin</div>
                         </div>
                     </div>
-                    <i class="bi bi-plus-lg text-secondary"></i>
+                    <i class="bi bi-grip-vertical text-secondary"></i>
                 </div>
 
                 <!-- Process -->
-                <div class="palette-item p-2 rounded-2 border d-flex align-items-center justify-content-between" onclick="addNode('process')">
+                <div class="palette-item p-2 rounded-2 border d-flex align-items-center justify-content-between" draggable="true" ondragstart="onPaletteDragStart(event, 'process')" onclick="addNode('process')" title="Click or Drag onto Canvas">
                     <div class="d-flex align-items-center gap-2">
                         <div class="p-1 rounded bg-primary bg-opacity-25 text-primary border border-primary">
                             <i class="bi bi-gear-wide-connected"></i>
@@ -379,11 +552,11 @@
                             <div class="text-secondary" style="font-size: 0.68rem;">1.0, 2.0 Transform Step</div>
                         </div>
                     </div>
-                    <i class="bi bi-plus-lg text-secondary"></i>
+                    <i class="bi bi-grip-vertical text-secondary"></i>
                 </div>
 
                 <!-- Data Store -->
-                <div class="palette-item p-2 rounded-2 border d-flex align-items-center justify-content-between" onclick="addNode('datastore')">
+                <div class="palette-item p-2 rounded-2 border d-flex align-items-center justify-content-between" draggable="true" ondragstart="onPaletteDragStart(event, 'datastore')" onclick="addNode('datastore')" title="Click or Drag onto Canvas">
                     <div class="d-flex align-items-center gap-2">
                         <div class="p-1 rounded bg-success bg-opacity-25 text-success border border-success">
                             <i class="bi bi-database"></i>
@@ -393,12 +566,54 @@
                             <div class="text-secondary" style="font-size: 0.68rem;">D1, D2 Database / Files</div>
                         </div>
                     </div>
-                    <i class="bi bi-plus-lg text-secondary"></i>
+                    <i class="bi bi-grip-vertical text-secondary"></i>
+                </div>
+
+                <!-- Decision / Logic (Diamond) -->
+                <div class="palette-item p-2 rounded-2 border d-flex align-items-center justify-content-between" draggable="true" ondragstart="onPaletteDragStart(event, 'decision')" onclick="addNode('decision')" title="Click or Drag onto Canvas">
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="p-1 rounded bg-purple bg-opacity-25 text-purple border border-purple" style="color: #c084fc; border-color: #a855f7 !important;">
+                            <i class="bi bi-diamond-fill"></i>
+                        </div>
+                        <div>
+                            <div class="fw-semibold small">Decision / Filter</div>
+                            <div class="text-secondary" style="font-size: 0.68rem;">Branching Rule & Gate</div>
+                        </div>
+                    </div>
+                    <i class="bi bi-grip-vertical text-secondary"></i>
+                </div>
+
+                <!-- Sticky Note (Annotation) -->
+                <div class="palette-item p-2 rounded-2 border d-flex align-items-center justify-content-between" draggable="true" ondragstart="onPaletteDragStart(event, 'note')" onclick="addNode('note')" title="Click or Drag onto Canvas">
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="p-1 rounded bg-warning bg-opacity-25 text-warning border border-warning">
+                            <i class="bi bi-sticky"></i>
+                        </div>
+                        <div>
+                            <div class="fw-semibold small">Sticky Note</div>
+                            <div class="text-secondary" style="font-size: 0.68rem;">Freeform Specification</div>
+                        </div>
+                    </div>
+                    <i class="bi bi-grip-vertical text-secondary"></i>
+                </div>
+
+                <!-- System Boundary (Container) -->
+                <div class="palette-item p-2 rounded-2 border d-flex align-items-center justify-content-between" draggable="true" ondragstart="onPaletteDragStart(event, 'boundary')" onclick="addNode('boundary')" title="Click or Drag onto Canvas">
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="p-1 rounded bg-info bg-opacity-10 text-info border border-info border-dashed">
+                            <i class="bi bi-bounding-box-circles"></i>
+                        </div>
+                        <div>
+                            <div class="fw-semibold small">System Boundary</div>
+                            <div class="text-secondary" style="font-size: 0.68rem;">Group Subsystems</div>
+                        </div>
+                    </div>
+                    <i class="bi bi-grip-vertical text-secondary"></i>
                 </div>
 
                 <!-- Connect Flow Mode -->
                 <button class="btn btn-sm btn-outline-warning w-100 py-2 d-flex align-items-center justify-content-center gap-2" id="btnConnectMode" onclick="toggleConnectMode()">
-                    <i class="bi bi-arrow-up-right-circle"></i> <span id="connectModeLabel">Connect Data Flow (Arrow)</span>
+                    <i class="bi bi-arrow-up-right-circle"></i> <span id="connectModeLabel">Draw Arrow / Flow</span>
                 </button>
             </div>
         </div>
@@ -427,7 +642,7 @@
     </aside>
 
     <!-- MAIN CANVAS VIEWPORT -->
-    <div class="canvas-viewport" id="canvasViewport" onmousedown="onCanvasMouseDown(event)">
+    <div class="canvas-viewport" id="canvasViewport" onmousedown="onCanvasMouseDown(event)" ondragover="onCanvasDragOver(event)" ondrop="onCanvasDrop(event)">
         <!-- SVG Connections Layer -->
         <svg id="svgEdgesLayer">
             <defs>
@@ -438,11 +653,70 @@
                     <polygon points="0 0, 10 3.5, 0 7" fill="#38bdf8" />
                 </marker>
             </defs>
-            <g id="edgesGroup"></g>
+            <g id="edgesGroup">
+                <!-- Preview connection path when drawing with mouse -->
+                <path id="previewConnectionPath" stroke="#38bdf8" stroke-width="2.5" stroke-dasharray="6,4" fill="none" marker-end="url(#arrowhead-selected)" style="display:none; pointer-events:none;"></path>
+            </g>
         </svg>
 
         <!-- HTML Nodes Container -->
         <div id="nodesContainer" style="position: absolute; top:0; left:0; width:100%; height:100%; pointer-events: none;"></div>
+
+        <!-- Draw.io Action & Style Toolbar -->
+        <div class="drawio-toolbar glass-panel">
+            <!-- Tools -->
+            <button class="btn btn-sm btn-outline-light drawio-tool-btn active" id="toolPointer" onclick="setStudioTool('pointer')" title="Select & Move (V)">
+                <i class="bi bi-cursor-fill"></i>
+            </button>
+            <button class="btn btn-sm btn-outline-light drawio-tool-btn" id="toolConnector" onclick="setStudioTool('connector')" title="Draw Connection Arrow (C)">
+                <i class="bi bi-arrow-up-right"></i>
+            </button>
+            <button class="btn btn-sm btn-outline-light drawio-tool-btn" id="toolText" onclick="setStudioTool('text')" title="Add Text Note (T)">
+                <i class="bi bi-type"></i>
+            </button>
+
+            <div class="vr bg-secondary opacity-50 my-1 mx-1"></div>
+
+            <!-- History: Undo / Redo -->
+            <button class="btn btn-sm btn-outline-light drawio-tool-btn" onclick="undo()" title="Undo (Ctrl+Z)">
+                <i class="bi bi-arrow-counterclockwise"></i>
+            </button>
+            <button class="btn btn-sm btn-outline-light drawio-tool-btn" onclick="redo()" title="Redo (Ctrl+Y)">
+                <i class="bi bi-arrow-clockwise"></i>
+            </button>
+
+            <div class="vr bg-secondary opacity-50 my-1 mx-1"></div>
+
+            <!-- Actions: Duplicate / Delete -->
+            <button class="btn btn-sm btn-outline-light drawio-tool-btn" onclick="duplicateSelectedElement()" title="Duplicate Selection (Ctrl+D)">
+                <i class="bi bi-copy"></i>
+            </button>
+            <button class="btn btn-sm btn-outline-danger drawio-tool-btn" onclick="deleteSelectedElement()" title="Delete Selected (Del)">
+                <i class="bi bi-trash3"></i>
+            </button>
+
+            <div class="vr bg-secondary opacity-50 my-1 mx-1"></div>
+
+            <!-- Snap to Grid -->
+            <button class="btn btn-sm btn-outline-secondary drawio-tool-btn" id="btnSnapGrid" onclick="toggleSnapGrid()" title="Snap to 10px Grid">
+                <i class="bi bi-grid-3x3"></i>
+            </button>
+
+            <div class="vr bg-secondary opacity-50 my-1 mx-1"></div>
+
+            <!-- Quick Color Palette (draw.io color swatches) -->
+            <div class="d-flex align-items-center gap-1 ps-1" title="Change Shape Color">
+                <span class="small text-secondary me-1" style="font-size: 0.7rem;">Color:</span>
+                <span class="color-swatch" style="background:#0284c7;" onclick="setSelectionColor('#0284c7', '#38bdf8')" title="Ocean Blue"></span>
+                <span class="color-swatch" style="background:#4f46e5;" onclick="setSelectionColor('#4f46e5', '#818cf8')" title="Indigo"></span>
+                <span class="color-swatch" style="background:#059669;" onclick="setSelectionColor('#059669', '#34d399')" title="Emerald"></span>
+                <span class="color-swatch" style="background:#d97706;" onclick="setSelectionColor('#d97706', '#fbbf24')" title="Amber Gold"></span>
+                <span class="color-swatch" style="background:#e11d48;" onclick="setSelectionColor('#e11d48', '#fb7185')" title="Rose Red"></span>
+                <span class="color-swatch" style="background:#7c3aed;" onclick="setSelectionColor('#7c3aed', '#c084fc')" title="Purple"></span>
+                <span class="color-swatch" style="background:#0d9488;" onclick="setSelectionColor('#0d9488', '#2dd4bf')" title="Teal"></span>
+                <span class="color-swatch" style="background:#334155;" onclick="setSelectionColor('#334155', '#64748b')" title="Dark Slate"></span>
+            </div>
+        </div>
 
         <!-- Floating Top Toolbar -->
         <div class="studio-topbar">
