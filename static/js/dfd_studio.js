@@ -1,8 +1,9 @@
 /**
- * DFD Studio Core Engine — Draw.io Interactive Edition
- * Interactive multi-level canvas with draw.io-like anchor ports, dynamic mouse arrow drawing,
- * 8-point shape resizing, inline double-click editing, drag-and-drop palette, color palettes,
- * undo/redo history, Gane-Sarson & Yourdon-DeMarco notation, SE rule verification, and exporters.
+ * DFD Studio Core Engine — Full User-Defined & Predefined Suite
+ * Comprehensive diagramming symbols (Process, Entity, DataStore, Database, Decision, Cloud, Document, Note, Text, Boundary),
+ * Interactive connection drawing from anchor ports, 8-point shape resizing,
+ * in-place inline double-click editing, real-time Inspector editing, custom symbol creator,
+ * undo/redo history, Gane-Sarson & Yourdon notation, SE rule verification, and standalone exporters.
  */
 
 // Global Studio State
@@ -78,6 +79,41 @@ function initDefaultTemplate() {
     }
 }
 
+// User-Defined Blank Architecture
+function newBlankDiagram() {
+    const title = prompt("Enter Name for Your Custom Architecture / Diagram:", "My Custom Architecture");
+    if (!title) return;
+
+    StudioState.projectId = null;
+    StudioState.projectName = title.trim();
+    const titleInput = document.getElementById('projectTitleInput');
+    if (titleInput) titleInput.value = StudioState.projectName;
+
+    StudioState.levels = {
+        0: {
+            nodes: [
+                { id: "proc_0", type: "process", number: "0", label: StudioState.projectName, x: 420, y: 220, width: 220, height: 100 }
+            ],
+            edges: []
+        },
+        1: { nodes: [], edges: [] },
+        2: { nodes: [], edges: [] }
+    };
+    StudioState.currentLevel = 0;
+    StudioState.selected = null;
+    StudioState.zoom = 1.0;
+    StudioState.pan = { x: 0, y: 0 };
+
+    const sel = document.getElementById('templateSelector');
+    if (sel) sel.value = "";
+
+    updateLevelButtons();
+    pushHistoryState();
+    renderCanvas();
+    if (window.showToast) window.showToast(`Created new blank user diagram: "${StudioState.projectName}"`, 'success');
+}
+
+// Load Predefined Architecture
 function loadTemplateData(tpl, recordHistory = true) {
     StudioState.projectName = tpl.title;
     const titleInput = document.getElementById('projectTitleInput');
@@ -93,6 +129,35 @@ function loadTemplateData(tpl, recordHistory = true) {
     if (recordHistory) pushHistoryState();
     renderCanvas();
     if (window.showToast) window.showToast(`Loaded "${tpl.title}" template!`, 'info');
+}
+
+// Load Saved Custom Project
+async function loadSavedUserProject(projectId) {
+    if (!projectId) return;
+    try {
+        const res = await fetch(`/api/projects/${projectId}/`);
+        const data = await res.json();
+        if (data && data.diagrams) {
+            StudioState.projectId = data.id;
+            StudioState.projectName = data.name;
+            const titleInput = document.getElementById('projectTitleInput');
+            if (titleInput) titleInput.value = data.name;
+
+            data.diagrams.forEach(d => {
+                if (StudioState.levels[d.level] !== undefined) {
+                    StudioState.levels[d.level] = d.graph_data;
+                }
+            });
+            StudioState.currentLevel = 0;
+            StudioState.selected = null;
+            updateLevelButtons();
+            pushHistoryState();
+            renderCanvas();
+            if (window.showToast) window.showToast(`Loaded custom project "${data.name}"`, 'success');
+        }
+    } catch (e) {
+        console.error("Failed to load saved project:", e);
+    }
 }
 
 function setupTemplateSelector() {
@@ -218,7 +283,7 @@ function renderCanvas() {
         renderEdge(edge, sNode, tNode, edgesGroup, isSelected);
     });
 
-    // 2. Render Nodes (DOM elements with ports & resize handles)
+    // 2. Render Nodes (DOM elements with anchor ports & 8-point resize handles)
     graph.nodes.forEach(node => {
         const isSelected = StudioState.selected && StudioState.selected.type === 'node' && StudioState.selected.id === node.id;
         renderNode(node, container, isSelected);
@@ -330,7 +395,7 @@ function getIntersectionPoint(x1, y1, x2, y2, w, h) {
     return { x: ix, y: iy };
 }
 
-// Render individual node with draw.io ports and resize handles
+// Render individual node with all symbols, ports, and resize handles
 function renderNode(node, container, isSelected) {
     const el = document.createElement('div');
     el.id = `node_${node.id}`;
@@ -339,6 +404,10 @@ function renderNode(node, container, isSelected) {
     el.style.width = `${node.width || 180}px`;
     el.style.height = `${node.height || 80}px`;
     el.style.pointerEvents = 'auto';
+
+    if (node.fontSize) {
+        el.style.fontSize = node.fontSize;
+    }
 
     let nodeClass = `dfd-node ${isSelected ? 'selected' : ''} `;
 
@@ -350,6 +419,7 @@ function renderNode(node, container, isSelected) {
         el.style.borderColor = node.borderColor;
     }
 
+    // Symbol Rendering for ALL Types
     if (node.type === 'entity') {
         nodeClass += 'node-entity';
         el.className = nodeClass;
@@ -388,18 +458,38 @@ function renderNode(node, container, isSelected) {
             el.className = nodeClass;
             el.innerHTML = `<span class="font-mono text-warning me-2">${escapeHtml(dsNum)}</span> <span class="node-label-span">${escapeHtml(node.label || 'Data Store')}</span>`;
         }
+    } else if (node.type === 'database') {
+        nodeClass += 'node-database';
+        el.className = nodeClass;
+        el.innerHTML = `<div class="node-label-span"><i class="bi bi-server me-1"></i> ${escapeHtml(node.label || 'Database')}</div>`;
     } else if (node.type === 'decision') {
         nodeClass += 'node-decision';
         el.className = nodeClass;
         el.innerHTML = `<div class="node-label-span"><i class="bi bi-diamond me-1"></i> ${escapeHtml(node.label || 'Decision')}</div>`;
+    } else if (node.type === 'cloud') {
+        nodeClass += 'node-cloud';
+        el.className = nodeClass;
+        el.innerHTML = `<div class="node-label-span"><i class="bi bi-cloud me-1"></i> ${escapeHtml(node.label || 'Cloud Service')}</div>`;
+    } else if (node.type === 'document') {
+        nodeClass += 'node-document';
+        el.className = nodeClass;
+        el.innerHTML = `<div class="node-label-span"><i class="bi bi-file-earmark-text me-1"></i> ${escapeHtml(node.label || 'Document')}</div>`;
     } else if (node.type === 'note') {
         nodeClass += 'node-note';
         el.className = nodeClass;
         el.innerHTML = `<div class="node-label-span"><i class="bi bi-sticky me-1"></i> ${escapeHtml(node.label || 'Note')}</div>`;
+    } else if (node.type === 'text') {
+        nodeClass += 'node-text';
+        el.className = nodeClass;
+        el.innerHTML = `<div class="node-label-span">${escapeHtml(node.label || 'Text Label')}</div>`;
     } else if (node.type === 'boundary') {
         nodeClass += 'node-boundary';
         el.className = nodeClass;
         el.innerHTML = `<div class="node-label-span"><i class="bi bi-bounding-box-circles me-1"></i> ${escapeHtml(node.label || 'System Boundary')}</div>`;
+    } else {
+        nodeClass += 'node-entity';
+        el.className = nodeClass;
+        el.innerHTML = `<div class="node-label-span">${escapeHtml(node.label || 'Component')}</div>`;
     }
 
     // DRAW.IO FEATURE: 4 Connection Ports (North, South, East, West)
@@ -441,7 +531,7 @@ function renderNode(node, container, isSelected) {
         startDraggingNode(node, e);
     });
 
-    // DRAW.IO FEATURE: Double-click Inline Label Editing directly on canvas
+    // Double-click Inline Label Editing directly on canvas
     el.addEventListener('dblclick', (e) => {
         e.stopPropagation();
         startInlineEditNode(node.id, el);
@@ -450,7 +540,7 @@ function renderNode(node, container, isSelected) {
     container.appendChild(el);
 }
 
-// DRAW.IO FEATURE: Interactive Connection Drawing with Mouse Drag
+// Interactive Connection Drawing with Mouse Drag
 function startPortDrawing(sourceNode, port, e) {
     const sWidth = sourceNode.width || 180;
     const sHeight = sourceNode.height || 80;
@@ -550,7 +640,7 @@ function startPortDrawing(sourceNode, port, e) {
     window.addEventListener('mouseup', onDrawingUp);
 }
 
-// DRAW.IO FEATURE: 8-Point Interactive Node Resizing
+// 8-Point Interactive Node Resizing
 function startNodeResize(node, dir, e) {
     const startClientX = e.clientX;
     const startClientY = e.clientY;
@@ -622,13 +712,12 @@ function startNodeResize(node, dir, e) {
     window.addEventListener('mouseup', onResizeUp);
 }
 
-// DRAW.IO FEATURE: In-Place Inline Text Editing on Canvas
+// In-Place Inline Text Editing on Canvas
 function startInlineEditNode(nodeId, nodeEl) {
     const graph = getCurrentGraph();
     const node = graph.nodes.find(n => n.id === nodeId);
     if (!node) return;
 
-    // Check if an editor is already open
     const existing = nodeEl.querySelector('.inline-node-editor');
     if (existing) return;
 
@@ -741,7 +830,6 @@ function startDraggingNode(node, e) {
         StudioState.draggingNode.x = Math.max(10, newX);
         StudioState.draggingNode.y = Math.max(10, newY);
 
-        // Update DOM node position directly for smooth 60fps drag
         const domNode = document.getElementById(`node_${StudioState.draggingNode.id}`);
         if (domNode) {
             domNode.style.left = `${StudioState.draggingNode.x}px`;
@@ -786,7 +874,7 @@ function renderOnlyEdges() {
     });
 }
 
-// DRAW.IO FEATURE: Drag and Drop from Palette to Canvas
+// Drag and Drop from Palette to Canvas
 function onPaletteDragStart(e, type) {
     e.dataTransfer.setData('text/plain', type);
 }
@@ -812,7 +900,7 @@ function onCanvasDrop(e) {
     addNode(type, canvasX, canvasY);
 }
 
-// DRAW.IO FEATURE: Quick Color Styling
+// Quick Color Styling
 function setSelectionColor(fillColor, borderColor) {
     if (!StudioState.selected || StudioState.selected.type !== 'node') {
         if (window.showToast) window.showToast('Please select a shape first to color it', 'warning');
@@ -829,7 +917,7 @@ function setSelectionColor(fillColor, borderColor) {
     if (window.showToast) window.showToast('Updated shape color', 'success');
 }
 
-// DRAW.IO FEATURE: Duplicate Selected Element
+// Duplicate Selected Element
 function duplicateSelectedElement() {
     if (!StudioState.selected || StudioState.selected.type !== 'node') {
         if (window.showToast) window.showToast('Select a shape to duplicate (Ctrl+D)', 'info');
@@ -852,7 +940,7 @@ function duplicateSelectedElement() {
     if (window.showToast) window.showToast(`Duplicated: ${cloned.label}`, 'success');
 }
 
-// DRAW.IO FEATURE: Snap-to-Grid Toggle
+// Snap-to-Grid Toggle
 function toggleSnapGrid() {
     StudioState.snapToGrid = !StudioState.snapToGrid;
     const btn = document.getElementById('btnSnapGrid');
@@ -866,31 +954,6 @@ function toggleSnapGrid() {
         }
     }
     if (window.showToast) window.showToast(`Grid Snapping: ${StudioState.snapToGrid ? 'ON (10px)' : 'OFF'}`, 'info');
-}
-
-// DRAW.IO FEATURE: Tool Selector
-function setStudioTool(tool) {
-    StudioState.activeTool = tool;
-    ['toolPointer', 'toolConnector', 'toolText'].forEach(id => {
-        const btn = document.getElementById(id);
-        if (btn) btn.classList.remove('active', 'btn-primary');
-    });
-
-    const activeBtn = document.getElementById(tool === 'pointer' ? 'toolPointer' : (tool === 'connector' ? 'toolConnector' : 'toolText'));
-    if (activeBtn) activeBtn.classList.add('active', 'btn-primary');
-
-    const viewport = document.getElementById('canvasViewport');
-    if (tool === 'connector') {
-        toggleConnectMode(true);
-    } else {
-        toggleConnectMode(false);
-    }
-
-    if (tool === 'text') {
-        if (viewport) viewport.style.cursor = 'text';
-    } else if (viewport) {
-        viewport.style.cursor = '';
-    }
 }
 
 // Selection Handling
@@ -915,7 +978,7 @@ function setupCanvasEvents() {
         zoomCanvas(delta);
     });
 
-    // Keyboard Shortcuts (draw.io shortcuts)
+    // Keyboard Shortcuts
     window.addEventListener('keydown', (e) => {
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
@@ -956,27 +1019,12 @@ function setupCanvasEvents() {
                     renderCanvas();
                 }
             }
-        } else if (e.key === 'v' || e.key === 'V') {
-            setStudioTool('pointer');
-        } else if (e.key === 'c' || e.key === 'C') {
-            setStudioTool('connector');
-        } else if (e.key === 't' || e.key === 'T') {
-            setStudioTool('text');
         }
     });
 }
 
 function onCanvasMouseDown(e) {
     if (e.target.id === 'canvasViewport' || e.target.id === 'svgEdgesLayer') {
-        if (StudioState.activeTool === 'text') {
-            // Click to add text note at cursor
-            const canvasX = Math.round((e.clientX - StudioState.pan.x) / StudioState.zoom);
-            const canvasY = Math.round((e.clientY - StudioState.pan.y) / StudioState.zoom);
-            addNode('note', canvasX, canvasY);
-            setStudioTool('pointer');
-            return;
-        }
-
         if (StudioState.isConnecting) {
             toggleConnectMode(false);
             return;
@@ -1035,20 +1083,22 @@ function resetCanvasZoom() {
     renderCanvas();
 }
 
-// Adding Elements
-function addNode(type, customX = null, customY = null) {
+// Adding Elements for ALL Types
+function addNode(type, customX = null, customY = null, customProps = {}) {
     const graph = getCurrentGraph();
     const newId = `${type}_${Date.now().toString(36)}`;
-    let label = 'New Node';
-    let number = '';
-    let w = 180, h = 80;
+    let label = customProps.label || 'New Node';
+    let number = customProps.number || '';
+    let w = customProps.width || 180, h = customProps.height || 80;
+    let fillColor = customProps.fillColor || null;
+    let borderColor = customProps.borderColor || null;
 
     if (type === 'entity') {
-        label = `External Entity ${graph.nodes.filter(n => n.type === 'entity').length + 1}`;
+        label = label === 'New Node' ? `External Entity ${graph.nodes.filter(n => n.type === 'entity').length + 1}` : label;
     } else if (type === 'process') {
         const procCount = graph.nodes.filter(n => n.type === 'process').length;
         number = StudioState.currentLevel === 0 ? '0' : `${procCount + 1}.0`;
-        label = `Process ${number}`;
+        label = label === 'New Node' ? `Process ${number}` : label;
         if (StudioState.currentLevel === 0) {
             label = StudioState.projectName;
             w = 220; h = 100;
@@ -1056,21 +1106,33 @@ function addNode(type, customX = null, customY = null) {
     } else if (type === 'datastore') {
         const dsCount = graph.nodes.filter(n => n.type === 'datastore').length;
         number = `D${dsCount + 1}`;
-        label = `Data Store ${number}`;
+        label = label === 'New Node' ? `Data Store ${number}` : label;
         w = 200; h = 65;
+    } else if (type === 'database') {
+        label = label === 'New Node' ? `Database Storage` : label;
+        w = 170; h = 80;
     } else if (type === 'decision') {
-        label = `Decision Condition`;
+        label = label === 'New Node' ? `Decision / Rule` : label;
         w = 150; h = 90;
+    } else if (type === 'cloud') {
+        label = label === 'New Node' ? `Cloud Service / API` : label;
+        w = 190; h = 75;
+    } else if (type === 'document') {
+        label = label === 'New Node' ? `Report / Document` : label;
+        w = 160; h = 80;
     } else if (type === 'note') {
-        label = `Specification Note`;
+        label = label === 'New Node' ? `Specification Note` : label;
         w = 170; h = 90;
+    } else if (type === 'text') {
+        label = label === 'New Node' ? `Floating Text Label` : label;
+        w = 160; h = 45;
     } else if (type === 'boundary') {
-        label = `Subsystem Boundary`;
+        label = label === 'New Node' ? `Subsystem Boundary` : label;
         w = 320; h = 220;
     }
 
-    let x = customX !== null ? customX : Math.round((-StudioState.pan.x + 400) / StudioState.zoom);
-    let y = customY !== null ? customY : Math.round((-StudioState.pan.y + 250) / StudioState.zoom);
+    let x = customX !== null ? customX : Math.round((-StudioState.pan.x + 380) / StudioState.zoom);
+    let y = customY !== null ? customY : Math.round((-StudioState.pan.y + 220) / StudioState.zoom);
 
     if (StudioState.snapToGrid) {
         x = Math.round(x / StudioState.gridSize) * StudioState.gridSize;
@@ -1085,12 +1147,42 @@ function addNode(type, customX = null, customY = null) {
         x: Math.max(20, x),
         y: Math.max(20, y),
         width: w,
-        height: h
+        height: h,
+        fillColor: fillColor,
+        borderColor: borderColor
     });
 
     pushHistoryState();
     selectElement('node', newId);
     if (window.showToast) window.showToast(`Added ${type}: "${label}"`, 'success');
+}
+
+// User-Defined Custom Symbol Modal Handlers
+function openCustomSymbolModal() {
+    const modalEl = document.getElementById('customSymbolModal');
+    if (!modalEl) return;
+    const modal = new bootstrap.Modal(modalEl);
+    modal.show();
+}
+
+function executeCreateCustomSymbol() {
+    const label = document.getElementById('customSymLabel').value.trim() || "Custom Component";
+    const shape = document.getElementById('customSymShape').value;
+    const color = document.getElementById('customSymColor').value;
+    const w = parseInt(document.getElementById('customSymW').value) || 180;
+    const h = parseInt(document.getElementById('customSymH').value) || 80;
+
+    addNode(shape, null, null, {
+        label: label,
+        fillColor: color,
+        borderColor: color,
+        width: w,
+        height: h
+    });
+
+    const modalEl = document.getElementById('customSymbolModal');
+    const modal = bootstrap.Modal.getInstance(modalEl);
+    if (modal) modal.hide();
 }
 
 // Connect Flow Mode (Drawing arrows between nodes via button)
@@ -1252,7 +1344,7 @@ function deleteSelectedElement() {
     if (window.showToast) window.showToast('Element deleted', 'secondary');
 }
 
-// Inspector Drawer Updates
+// Inspector Drawer Updates — Real-Time Live Text & Style Editing
 function updateInspector() {
     const drawerProps = document.getElementById('inspectorProperties');
     const typeBadge = document.getElementById('selectionTypeBadge');
@@ -1261,7 +1353,13 @@ function updateInspector() {
     if (!StudioState.selected) {
         typeBadge.textContent = "No Selection";
         typeBadge.className = "badge bg-secondary rounded-pill";
-        drawerProps.innerHTML = `<p class="text-secondary small">Click or double-click on any Shape or Data Flow arrow to view and edit its attributes in real time.</p>`;
+        drawerProps.innerHTML = `
+            <div class="text-center py-4">
+                <i class="bi bi-cursor-fill fs-3 text-secondary opacity-50 mb-2 d-block"></i>
+                <p class="text-secondary small mb-1">Click on any symbol or arrow to edit text, change dimensions, or customize colors.</p>
+                <p class="text-secondary opacity-75" style="font-size:0.75rem;">Tip: You can also <strong>double-click</strong> directly on the canvas to edit text inline!</p>
+            </div>
+        `;
         return;
     }
 
@@ -1273,33 +1371,66 @@ function updateInspector() {
         if (!node) return;
 
         typeBadge.textContent = node.type.toUpperCase();
-        typeBadge.className = node.type === 'entity' ? 'badge bg-info' : (node.type === 'process' ? 'badge bg-primary' : 'badge bg-success');
+        typeBadge.className = node.type === 'entity' ? 'badge bg-info' : (node.type === 'process' ? 'badge bg-primary' : (node.type === 'database' ? 'badge bg-teal' : 'badge bg-success'));
 
         drawerProps.innerHTML = `
-            <div class="mb-2">
-                <label class="form-label small text-secondary fw-semibold mb-1">Label (Double-click node to edit inline)</label>
-                <input type="text" class="form-control form-control-sm" value="${escapeHtml(node.label)}" onchange="updateSelectedNodeProp('label', this.value)">
+            <div class="mb-3">
+                <label class="form-label small text-secondary fw-bold mb-1">Text / Label</label>
+                <input type="text" class="form-control form-control-sm" value="${escapeHtml(node.label)}" oninput="updateSelectedNodeProp('label', this.value)" placeholder="Enter label">
             </div>
-            ${node.type !== 'entity' ? `
-            <div class="mb-2">
-                <label class="form-label small text-secondary fw-semibold mb-1">Number / ID</label>
-                <input type="text" class="form-control form-control-sm font-mono" value="${escapeHtml(node.number || '')}" onchange="updateSelectedNodeProp('number', this.value)">
+
+            ${node.type === 'process' || node.type === 'datastore' ? `
+            <div class="mb-3">
+                <label class="form-label small text-secondary fw-bold mb-1">ID / Process Number</label>
+                <input type="text" class="form-control form-control-sm font-mono" value="${escapeHtml(node.number || '')}" oninput="updateSelectedNodeProp('number', this.value)" placeholder="e.g. 1.0, D1">
             </div>` : ''}
-            <div class="row g-2 mb-2">
+
+            <div class="mb-3">
+                <label class="form-label small text-secondary fw-bold mb-1">Font Size</label>
+                <select class="form-select form-select-sm" onchange="updateSelectedNodeProp('fontSize', this.value)">
+                    <option value="0.75rem" ${node.fontSize === '0.75rem' ? 'selected' : ''}>Small (12px)</option>
+                    <option value="0.85rem" ${!node.fontSize || node.fontSize === '0.85rem' ? 'selected' : ''}>Standard (14px)</option>
+                    <option value="1rem" ${node.fontSize === '1rem' ? 'selected' : ''}>Medium (16px)</option>
+                    <option value="1.2rem" ${node.fontSize === '1.2rem' ? 'selected' : ''}>Large (19px)</option>
+                    <option value="1.4rem" ${node.fontSize === '1.4rem' ? 'selected' : ''}>Title (22px)</option>
+                </select>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label small text-secondary fw-bold mb-1">Shape Fill Color</label>
+                <div class="d-flex align-items-center gap-1 mb-2">
+                    <span class="color-swatch" style="background:#0284c7;" onclick="setSelectionColor('#0284c7', '#38bdf8')" title="Blue"></span>
+                    <span class="color-swatch" style="background:#4f46e5;" onclick="setSelectionColor('#4f46e5', '#818cf8')" title="Indigo"></span>
+                    <span class="color-swatch" style="background:#059669;" onclick="setSelectionColor('#059669', '#34d399')" title="Emerald"></span>
+                    <span class="color-swatch" style="background:#d97706;" onclick="setSelectionColor('#d97706', '#fbbf24')" title="Amber"></span>
+                    <span class="color-swatch" style="background:#e11d48;" onclick="setSelectionColor('#e11d48', '#fb7185')" title="Rose"></span>
+                    <span class="color-swatch" style="background:#7c3aed;" onclick="setSelectionColor('#7c3aed', '#c084fc')" title="Purple"></span>
+                    <span class="color-swatch" style="background:#0d9488;" onclick="setSelectionColor('#0d9488', '#2dd4bf')" title="Teal"></span>
+                    <span class="color-swatch" style="background:#334155;" onclick="setSelectionColor('#334155', '#64748b')" title="Slate"></span>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="small text-secondary" style="font-size:0.75rem;">Custom Color:</span>
+                    <input type="color" class="form-control form-control-color form-control-sm" value="${node.fillColor || '#0369a1'}" onchange="setSelectionColor(this.value, this.value)">
+                </div>
+            </div>
+
+            <div class="row g-2 mb-3">
                 <div class="col-6">
-                    <label class="form-label small text-secondary fw-semibold mb-1">Width (px)</label>
+                    <label class="form-label small text-secondary fw-bold mb-1">Width (px)</label>
                     <input type="number" class="form-control form-control-sm" value="${node.width || 180}" onchange="updateSelectedNodeProp('width', parseInt(this.value) || 180)">
                 </div>
                 <div class="col-6">
-                    <label class="form-label small text-secondary fw-semibold mb-1">Height (px)</label>
+                    <label class="form-label small text-secondary fw-bold mb-1">Height (px)</label>
                     <input type="number" class="form-control form-control-sm" value="${node.height || 80}" onchange="updateSelectedNodeProp('height', parseInt(this.value) || 80)">
                 </div>
             </div>
-            <div class="mb-2">
-                <label class="form-label small text-secondary fw-semibold mb-1">Description / Spec</label>
-                <textarea class="form-control form-control-sm" rows="2" onchange="updateSelectedNodeProp('description', this.value)">${escapeHtml(node.description || '')}</textarea>
+
+            <div class="mb-3">
+                <label class="form-label small text-secondary fw-bold mb-1">Specification / Details</label>
+                <textarea class="form-control form-control-sm" rows="2" oninput="updateSelectedNodeProp('description', this.value)" placeholder="Detailed specifications">${escapeHtml(node.description || '')}</textarea>
             </div>
-            <div class="d-flex gap-2 mt-3">
+
+            <div class="d-flex gap-2 mt-3 pt-2 border-top border-secondary border-opacity-25">
                 <button class="btn btn-sm btn-outline-info w-50" onclick="duplicateSelectedElement()"><i class="bi bi-copy me-1"></i> Duplicate</button>
                 <button class="btn btn-sm btn-outline-danger w-50" onclick="deleteSelectedElement()"><i class="bi bi-trash me-1"></i> Delete</button>
             </div>
@@ -1315,12 +1446,14 @@ function updateInspector() {
         typeBadge.className = "badge bg-warning text-dark";
 
         drawerProps.innerHTML = `
-            <div class="mb-2">
-                <label class="form-label small text-secondary fw-semibold mb-1">Flow Label (Double-click arrow to edit inline)</label>
-                <input type="text" class="form-control form-control-sm" value="${escapeHtml(edge.label)}" onchange="updateSelectedEdgeProp('label', this.value)">
+            <div class="mb-3">
+                <label class="form-label small text-secondary fw-bold mb-1">Flow Label (Double-click arrow to edit)</label>
+                <input type="text" class="form-control form-control-sm" value="${escapeHtml(edge.label)}" oninput="updateSelectedEdgeProp('label', this.value)" placeholder="Enter flow label">
             </div>
-            <div class="small text-secondary mb-1">Source: <span class="fw-semibold text-white">${escapeHtml(sNode ? sNode.label : edge.source)}</span></div>
-            <div class="small text-secondary mb-2">Destination: <span class="fw-semibold text-white">${escapeHtml(tNode ? tNode.label : edge.target)}</span></div>
+            <div class="card bg-body-tertiary p-2 border-0 mb-3 small">
+                <div class="text-secondary mb-1">Source: <span class="fw-semibold text-white">${escapeHtml(sNode ? sNode.label : edge.source)}</span></div>
+                <div class="text-secondary">Target: <span class="fw-semibold text-white">${escapeHtml(tNode ? tNode.label : edge.target)}</span></div>
+            </div>
             <div class="d-flex gap-2 mt-3">
                 <button class="btn btn-sm btn-outline-danger w-100" onclick="deleteSelectedElement()"><i class="bi bi-trash me-1"></i> Delete Flow</button>
             </div>
@@ -1334,8 +1467,16 @@ function updateSelectedNodeProp(prop, val) {
     const node = graph.nodes.find(n => n.id === StudioState.selected.id);
     if (node) {
         node[prop] = val;
-        pushHistoryState();
-        renderCanvas();
+        // Fast DOM update for label to avoid re-rendering entire canvas on every keystroke
+        if (prop === 'label') {
+            const domNode = document.getElementById(`node_${node.id}`);
+            if (domNode) {
+                const span = domNode.querySelector('.node-label-span');
+                if (span) span.textContent = val;
+            }
+        } else {
+            renderCanvas();
+        }
     }
 }
 
@@ -1345,7 +1486,6 @@ function updateSelectedEdgeProp(prop, val) {
     const edge = graph.edges.find(e => e.id === StudioState.selected.id);
     if (edge) {
         edge[prop] = val;
-        pushHistoryState();
         renderCanvas();
     }
 }
@@ -1354,7 +1494,7 @@ function updateComponentStats() {
     const graph = getCurrentGraph();
     const nEntities = graph.nodes.filter(n => n.type === 'entity').length;
     const nProcesses = graph.nodes.filter(n => n.type === 'process').length;
-    const nStores = graph.nodes.filter(n => n.type === 'datastore').length;
+    const nStores = graph.nodes.filter(n => n.type === 'datastore' || n.type === 'database').length;
     const nEdges = graph.edges.length;
 
     const elE = document.getElementById('statEntities');
@@ -1735,8 +1875,8 @@ function generateStandaloneSVG() {
     graph.nodes.forEach(n => {
         const w = n.width || 180;
         const h = n.height || 80;
-        const fill = n.fillColor || (n.type === 'entity' ? '#0369a1' : (n.type === 'process' ? '#4338ca' : '#047857'));
-        const stroke = n.borderColor || (n.type === 'entity' ? '#38bdf8' : (n.type === 'process' ? '#818cf8' : '#34d399'));
+        const fill = n.fillColor || (n.type === 'entity' ? '#0369a1' : (n.type === 'process' ? '#4338ca' : (n.type === 'database' ? '#0f766e' : '#047857')));
+        const stroke = n.borderColor || (n.type === 'entity' ? '#38bdf8' : (n.type === 'process' ? '#818cf8' : (n.type === 'database' ? '#2dd4bf' : '#34d399')));
 
         if (n.type === 'entity') {
             nodesSvg += `
@@ -1775,6 +1915,13 @@ function generateStandaloneSVG() {
                     <text x="${(w + 40)/2}" y="${h/2 + 4}" text-anchor="middle" fill="#ecfdf5" font-family="sans-serif" font-size="12">${escapeHtml(n.label)}</text>
                 </g>
             `;
+        } else if (n.type === 'database') {
+            nodesSvg += `
+                <g transform="translate(${n.x}, ${n.y})">
+                    <rect width="${w}" height="${h}" rx="12" fill="${fill}" stroke="${stroke}" stroke-width="2"/>
+                    <text x="${w/2}" y="${h/2 + 4}" text-anchor="middle" fill="#ccfbf1" font-family="sans-serif" font-weight="bold" font-size="12">${escapeHtml(n.label)}</text>
+                </g>
+            `;
         } else if (n.type === 'decision') {
             const pts = `${w/2},0 ${w},${h/2} ${w/2},${h} 0,${h/2}`;
             nodesSvg += `
@@ -1783,11 +1930,31 @@ function generateStandaloneSVG() {
                     <text x="${w/2}" y="${h/2 + 4}" text-anchor="middle" fill="#f5f3ff" font-family="sans-serif" font-weight="bold" font-size="12">${escapeHtml(n.label)}</text>
                 </g>
             `;
+        } else if (n.type === 'cloud') {
+            nodesSvg += `
+                <g transform="translate(${n.x}, ${n.y})">
+                    <rect width="${w}" height="${h}" rx="30" fill="${fill}" stroke="${stroke}" stroke-width="2"/>
+                    <text x="${w/2}" y="${h/2 + 4}" text-anchor="middle" fill="#f0f9ff" font-family="sans-serif" font-size="12">${escapeHtml(n.label)}</text>
+                </g>
+            `;
+        } else if (n.type === 'document') {
+            nodesSvg += `
+                <g transform="translate(${n.x}, ${n.y})">
+                    <rect width="${w}" height="${h}" rx="4" fill="${fill}" stroke="${stroke}" stroke-width="2"/>
+                    <text x="${w/2}" y="${h/2 + 4}" text-anchor="middle" fill="#f8fafc" font-family="sans-serif" font-size="12">${escapeHtml(n.label)}</text>
+                </g>
+            `;
         } else if (n.type === 'note') {
             nodesSvg += `
                 <g transform="translate(${n.x}, ${n.y})">
                     <rect width="${w}" height="${h}" fill="${n.fillColor || '#fef08a'}" stroke="${n.borderColor || '#facc15'}" stroke-width="1"/>
                     <text x="10" y="24" fill="#854d0e" font-family="sans-serif" font-size="11">${escapeHtml(n.label)}</text>
+                </g>
+            `;
+        } else if (n.type === 'text') {
+            nodesSvg += `
+                <g transform="translate(${n.x}, ${n.y})">
+                    <text x="5" y="${h/2 + 4}" fill="#f8fafc" font-family="sans-serif" font-size="13">${escapeHtml(n.label)}</text>
                 </g>
             `;
         } else if (n.type === 'boundary') {
@@ -1862,7 +2029,7 @@ function openMermaidModal() {
         } else if (n.type === 'process') {
             const num = n.number || '0';
             syntax += `    ${safeId}(("${num}: ${safeLabel}"))\n`;
-        } else if (n.type === 'datastore') {
+        } else if (n.type === 'datastore' || n.type === 'database') {
             syntax += `    ${safeId}[("[(DataStore)] ${safeLabel}")]\n`;
         } else if (n.type === 'decision') {
             syntax += `    ${safeId}{"${safeLabel}"}\n`;
