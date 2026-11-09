@@ -6,6 +6,8 @@ app_name = 'dfd_app'
 urlpatterns = [
     # Pages
     path('', views.studio_view, name='studio'),
+    path('studio/', views.studio_view, name='studio_slash'),
+    path('studio', views.studio_view, name='studio_noslash'),
     path('templates/', views.templates_view, name='templates'),
     path('forensics/', views.forensics_view, name='forensics'),
     path('docs/', views.docs_view, name='docs'),
@@ -13,6 +15,7 @@ urlpatterns = [
     # REST APIs
     path('api/validate/', views.api_validate, name='api_validate'),
     path('api/generate/', views.api_generate, name='api_generate'),
+    path('api/generate-dfd/', views.api_generate, name='api_generate_dfd'),
     path('api/autolayout/', views.api_autolayout, name='api_autolayout'),
     path('api/data-dictionary/', views.api_data_dictionary, name='api_data_dictionary'),
     path('api/projects/save/', views.api_save_project, name='api_save_project'),
