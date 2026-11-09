@@ -1,0 +1,262 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-4">
+    <!-- Header -->
+    <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 mb-4">
+        <div>
+            <div class="d-flex align-items-center gap-2 mb-1">
+                <span class="badge badge-subtle-primary">INTERNET REPOSITORY</span>
+                <span class="text-secondary small">• 15 Industry & Academic Standard System Architectures</span>
+            </div>
+            <h2 class="fw-bold mb-1">Data Flow Diagram Templates</h2>
+            <p class="text-secondary mb-0">Production-grade Level 0 Context and Level 1 Decomposition diagrams compiled from academic software engineering curricula, IEEE standards, and internet systems.</p>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="{% url 'dfd_app:studio' %}" class="btn btn-primary d-flex align-items-center gap-2 shadow-sm">
+                <i class="bi bi-bezier2"></i> Open DFD Canvas Studio
+            </a>
+        </div>
+    </div>
+
+    <!-- Category Filter Bar & Search -->
+    <div class="card bg-body-tertiary border-0 p-3 mb-4 shadow-sm">
+        <div class="row g-3 align-items-center">
+            <div class="col-lg-8 d-flex flex-wrap gap-2">
+                <a href="{% url 'dfd_app:templates' %}" class="btn btn-sm rounded-pill {% if selected_category == 'all' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+                    All Categories ({{ templates.count }})
+                </a>
+                {% for cat in categories %}
+                <a href="{% url 'dfd_app:templates' %}?category={{ cat|urlencode }}" class="btn btn-sm rounded-pill {% if selected_category == cat %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+                    {{ cat }}
+                </a>
+                {% endfor %}
+            </div>
+            <div class="col-lg-4">
+                <div class="input-group input-group-sm">
+                    <span class="input-group-text bg-transparent border-secondary border-opacity-25"><i class="bi bi-search text-secondary"></i></span>
+                    <input type="text" id="templateSearchInput" class="form-control border-secondary border-opacity-25" placeholder="Search banking, hospital, booking...">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Templates Grid -->
+    <div class="row g-4" id="templatesGrid">
+        {% for tpl in templates %}
+        <div class="col-md-6 col-lg-4 template-card-item" data-title="{{ tpl.title|lower }}" data-summary="{{ tpl.summary|lower }}" data-category="{{ tpl.category|lower }}">
+            <div class="card h-100 border border-secondary border-opacity-10 bg-body-tertiary shadow-sm hover-lift">
+                <div class="card-body p-4 d-flex flex-column">
+                    <div class="d-flex align-items-start justify-content-between gap-2 mb-2">
+                        <span class="badge badge-subtle-primary small">{{ tpl.category }}</span>
+                        <span class="badge bg-dark text-secondary border border-secondary border-opacity-25 small font-mono">L0 + L1</span>
+                    </div>
+
+                    <h5 class="fw-bold mb-2">{{ tpl.title }}</h5>
+                    <p class="text-secondary small mb-3 flex-grow-1" style="line-height: 1.5;">{{ tpl.summary }}</p>
+
+                    <div class="d-flex align-items-center gap-3 py-2 border-top border-bottom border-secondary border-opacity-10 mb-3 small font-mono text-secondary">
+                        <div><i class="bi bi-diagram-2 text-primary me-1"></i> {{ tpl.level1_data.nodes|length }} Nodes</div>
+                        <div><i class="bi bi-arrow-right-square text-warning me-1"></i> {{ tpl.level1_data.edges|length }} Flows</div>
+                        <div><i class="bi bi-table text-success me-1"></i> Data Dict</div>
+                    </div>
+
+                    <div class="d-flex gap-2 mt-auto">
+                        <button class="btn btn-primary btn-sm flex-grow-1 d-flex align-items-center justify-content-center gap-2" onclick="loadIntoStudio('{{ tpl.slug }}')">
+                            <i class="bi bi-pencil-square"></i> Open in Canvas
+                        </button>
+                        <button class="btn btn-outline-secondary btn-sm px-3" onclick="previewTemplate('{{ tpl.slug }}')" title="Quick Preview Diagram">
+                            <i class="bi bi-eye"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Template Preview Modal -->
+<div class="modal fade" id="templatePreviewModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg glass-panel">
+            <div class="modal-header border-secondary border-opacity-25">
+                <h5 class="modal-title fw-bold text-white d-flex align-items-center gap-2" id="previewModalTitle">
+                    <i class="bi bi-diagram-3 text-primary"></i> Template Preview
+                </h5>
+                <div class="btn-group btn-group-sm ms-auto me-3" role="group">
+                    <button type="button" class="btn btn-outline-primary active" id="btnPreviewL0" onclick="switchPreviewLevel(0)">Level 0 (Context)</button>
+                    <button type="button" class="btn btn-outline-primary" id="btnPreviewL1" onclick="switchPreviewLevel(1)">Level 1 (Decomposition)</button>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0" style="height: 600px; position: relative; overflow: hidden; background: #0b1120;">
+                <svg id="previewSvg" style="width: 100%; height: 100%;"></svg>
+            </div>
+            <div class="modal-footer border-secondary border-opacity-25 justify-content-between">
+                <div class="text-secondary small" id="previewModalDesc">Detailed architecture overview</div>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary btn-sm" id="btnPreviewOpenInStudio">
+                        <i class="bi bi-bezier2 me-1"></i> Edit This Architecture in Studio
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // Search filter for template cards
+    const searchInput = document.getElementById('templateSearchInput');
+    if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+            const query = e.target.value.toLowerCase().trim();
+            const cards = document.querySelectorAll('.template-card-item');
+            cards.forEach(card => {
+                const title = card.getAttribute('data-title') || '';
+                const summary = card.getAttribute('data-summary') || '';
+                const cat = card.getAttribute('data-category') || '';
+                if (title.includes(query) || summary.includes(query) || cat.includes(query)) {
+                    card.style.display = 'block';
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+        });
+    }
+
+    // Direct link to Studio with template selected
+    function loadIntoStudio(slug) {
+        window.location.href = "{% url 'dfd_app:studio' %}?load=" + slug;
+    }
+
+    // Interactive Preview Modal
+    let activePreviewTemplate = null;
+    let previewActiveLevel = 0;
+
+    // Load templates JSON from server
+    const ALL_TEMPLATES = {{ templates_json|safe }};
+
+    function previewTemplate(slug) {
+        const found = ALL_TEMPLATES.find(t => t.slug === slug);
+        if (!found) return;
+
+        activePreviewTemplate = found;
+        previewActiveLevel = 0;
+
+        document.getElementById('previewModalTitle').innerHTML = `<i class="bi bi-diagram-3 text-primary"></i> ${found.title}`;
+        document.getElementById('previewModalDesc').textContent = found.summary;
+        document.getElementById('btnPreviewOpenInStudio').onclick = () => loadIntoStudio(slug);
+
+        document.getElementById('btnPreviewL0').className = 'btn btn-outline-primary active';
+        document.getElementById('btnPreviewL1').className = 'btn btn-outline-primary';
+
+        const modalEl = document.getElementById('templatePreviewModal');
+        const modal = new bootstrap.Modal(modalEl);
+        modal.show();
+
+        modalEl.addEventListener('shown.bs.modal', function onShown() {
+            renderPreviewSvg();
+            modalEl.removeEventListener('shown.bs.modal', onShown);
+        });
+    }
+
+    function switchPreviewLevel(lvl) {
+        previewActiveLevel = lvl;
+        document.getElementById('btnPreviewL0').className = lvl === 0 ? 'btn btn-outline-primary active' : 'btn btn-outline-primary';
+        document.getElementById('btnPreviewL1').className = lvl === 1 ? 'btn btn-outline-primary active' : 'btn btn-outline-primary';
+        renderPreviewSvg();
+    }
+
+    function renderPreviewSvg() {
+        if (!activePreviewTemplate) return;
+        const svgEl = document.getElementById('previewSvg');
+        const graph = previewActiveLevel === 0 ? activePreviewTemplate.level0 : activePreviewTemplate.level1;
+        if (!graph || !graph.nodes) return;
+
+        let minX = 9999, minY = 9999, maxX = -9999, maxY = -9999;
+        graph.nodes.forEach(n => {
+            minX = Math.min(minX, n.x);
+            minY = Math.min(minY, n.y);
+            maxX = Math.max(maxX, n.x + (n.width || 180));
+            maxY = Math.max(maxY, n.y + (n.height || 80));
+        });
+
+        const pad = 60;
+        const viewBoxW = Math.max(1200, (maxX - minX) + (pad * 2));
+        const viewBoxH = Math.max(700, (maxY - minY) + (pad * 2));
+        const viewBoxX = Math.max(0, minX - pad);
+        const viewBoxY = Math.max(0, minY - pad);
+
+        svgEl.setAttribute('viewBox', `${viewBoxX} ${viewBoxY} ${viewBoxW} ${viewBoxH}`);
+
+        let edgesSvg = '';
+        const nodeMap = {};
+        graph.nodes.forEach(n => nodeMap[n.id] = n);
+
+        (graph.edges || []).forEach(e => {
+            const s = nodeMap[e.source];
+            const t = nodeMap[e.target];
+            if (!s || !t) return;
+            const sx = s.x + (s.width || 180)/2;
+            const sy = s.y + (s.height || 80)/2;
+            const tx = t.x + (t.width || 180)/2;
+            const ty = t.y + (t.height || 80)/2;
+            const midX = (sx + tx) / 2;
+            const midY = (sy + ty) / 2;
+
+            edgesSvg += `
+                <path d="M ${sx} ${sy} Q ${midX} ${midY - 20} ${tx} ${ty}" stroke="#94a3b8" stroke-width="2" fill="none" marker-end="url(#arrowhead-prev)"/>
+                <rect x="${midX - 45}" y="${midY - 30}" width="90" height="18" rx="4" fill="#0f172a" stroke="#475569" stroke-width="1"/>
+                <text x="${midX}" y="${midY - 17}" text-anchor="middle" fill="#ffffff" font-family="sans-serif" font-size="10" font-weight="600">${e.label || 'Flow'}</text>
+            `;
+        });
+
+        let nodesSvg = '';
+        graph.nodes.forEach(n => {
+            const w = n.width || 180;
+            const h = n.height || 80;
+            if (n.type === 'entity') {
+                nodesSvg += `
+                    <g transform="translate(${n.x}, ${n.y})">
+                        <rect width="${w}" height="${h}" rx="4" fill="#0369a1" stroke="#38bdf8" stroke-width="2"/>
+                        <text x="${w/2}" y="${h/2 + 5}" text-anchor="middle" fill="#f0f9ff" font-family="sans-serif" font-weight="bold" font-size="12">${n.label}</text>
+                    </g>
+                `;
+            } else if (n.type === 'process') {
+                nodesSvg += `
+                    <g transform="translate(${n.x}, ${n.y})">
+                        <rect width="${w}" height="${h}" rx="12" fill="#4338ca" stroke="#818cf8" stroke-width="2"/>
+                        <rect width="${w}" height="20" rx="12" fill="rgba(0,0,0,0.3)"/>
+                        <text x="${w/2}" y="14" text-anchor="middle" fill="#c7d2fe" font-family="monospace" font-size="10">${n.number || '0'}</text>
+                        <text x="${w/2}" y="${h/2 + 10}" text-anchor="middle" fill="#eef2ff" font-family="sans-serif" font-weight="bold" font-size="11">${n.label}</text>
+                    </g>
+                `;
+            } else if (n.type === 'datastore') {
+                nodesSvg += `
+                    <g transform="translate(${n.x}, ${n.y})">
+                        <rect width="${w}" height="${h}" fill="#047857" stroke="#34d399" stroke-width="2"/>
+                        <rect width="36" height="${h}" fill="rgba(0,0,0,0.3)"/>
+                        <text x="18" y="${h/2 + 4}" text-anchor="middle" fill="#a7f3d0" font-family="monospace" font-size="11">${n.number || 'D'}</text>
+                        <text x="${(w+36)/2}" y="${h/2 + 4}" text-anchor="middle" fill="#ecfdf5" font-family="sans-serif" font-weight="bold" font-size="11">${n.label}</text>
+                    </g>
+                `;
+            }
+        });
+
+        svgEl.innerHTML = `
+            <defs>
+                <marker id="arrowhead-prev" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+                    <polygon points="0 0, 8 3, 0 6" fill="#94a3b8"/>
+                </marker>
+            </defs>
+            <g>${edgesSvg}</g>
+            <g>${nodesSvg}</g>
+        `;
+    }
+</script>
+{% endblock %}
+

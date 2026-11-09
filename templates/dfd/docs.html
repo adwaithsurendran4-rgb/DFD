@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-5" style="max-width: 960px;">
+    <!-- Header -->
+    <div class="text-center mb-5">
+        <span class="badge badge-subtle-primary mb-2">SOFTWARE ENGINEERING SPECIFICATION</span>
+        <h1 class="fw-bold display-6 mb-2">Data Flow Diagram (DFD) Reference Guide</h1>
+        <p class="text-secondary lead fs-6">Complete academic and professional standard documentation for DFD modeling, Gane-Sarson & Yourdon notations, leveling rules, and validation axioms.</p>
+    </div>
+
+    <!-- Section 1: Overview -->
+    <div class="card bg-body-tertiary border-0 p-4 shadow-sm mb-4">
+        <h4 class="fw-bold text-primary mb-3"><i class="bi bi-diagram-3 me-2"></i> What is a Data Flow Diagram (DFD)?</h4>
+        <p>A <strong>Data Flow Diagram (DFD)</strong> is a graphical representation of the "flow" of data through an information system. It models the system's process aspects, showing what kinds of information will be input to and output from the system, where data comes from and where it goes, and where the data is stored.</p>
+        <p class="mb-0">Unlike control flowcharts or UML activity diagrams, DFDs contain <strong>no control logic</strong>, loops, or conditional branching (such as <code>if/else</code>). Instead, they strictly describe the transformation and transmission of data between processes, stores, and external actors.</p>
+    </div>
+
+    <!-- Section 2: Notation Comparison -->
+    <div class="card bg-body-tertiary border-0 p-4 shadow-sm mb-4">
+        <h4 class="fw-bold text-info mb-3"><i class="bi bi-columns-gap me-2"></i> Notation Standards: Gane & Sarson vs. Yourdon & DeMarco</h4>
+        <div class="table-responsive">
+            <table class="table table-bordered align-middle">
+                <thead class="table-dark">
+                    <tr>
+                        <th style="width: 25%;">DFD Element</th>
+                        <th style="width: 37%;">Gane & Sarson Notation</th>
+                        <th style="width: 38%;">Yourdon & DeMarco Notation</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="fw-bold">Process (Transformation)</td>
+                        <td>
+                            <div class="p-2 rounded-3 text-center text-white small" style="background: #4338ca; border: 2px solid #818cf8;">
+                                <div class="font-mono border-bottom pb-1 mb-1 opacity-75">1.0</div>
+                                <div>Rounded Rectangle</div>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="p-2 rounded-circle text-center text-white small mx-auto d-flex flex-column align-items-center justify-content-center" style="width: 80px; height: 80px; background: #4338ca; border: 2px solid #818cf8;">
+                                <div class="font-mono border-bottom pb-1 mb-1 opacity-75">1.0</div>
+                                <div>Circle</div>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="fw-bold">External Entity (Source/Sink)</td>
+                        <td>
+                            <div class="p-2 rounded-1 text-center text-white small" style="background: #0369a1; border: 2px solid #38bdf8;">
+                                Rectangle with square border
+                            </div>
+                        </td>
+                        <td>
+                            <div class="p-2 rounded-1 text-center text-white small" style="background: #0369a1; border: 2px solid #38bdf8;">
+                                Rectangle or Square
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="fw-bold">Data Store (Repository)</td>
+                        <td>
+                            <div class="p-2 text-center text-white small" style="background: #047857; border-top: 2px solid #34d399; border-bottom: 2px solid #34d399; border-left: 2px solid #34d399;">
+                                Open-ended rectangle (right side open)
+                            </div>
+                        </td>
+                        <td>
+                            <div class="p-2 text-center text-white small" style="background: rgba(4, 120, 87, 0.4); border-top: 2px solid #34d399; border-bottom: 2px solid #34d399;">
+                                Two parallel horizontal lines
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="fw-bold">Data Flow</td>
+                        <td colspan="2" class="text-center">
+                            <span class="badge bg-secondary font-mono">──── Labeled Directed Arrow ────►</span>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Section 3: Cardinal Rules & Axioms -->
+    <div class="card bg-body-tertiary border-0 p-4 shadow-sm mb-4">
+        <h4 class="fw-bold text-warning mb-3"><i class="bi bi-shield-exclamation me-2"></i> The 5 Cardinal Axioms of DFDs</h4>
+        <div class="d-flex flex-column gap-3">
+            <div class="p-3 rounded-3 bg-body border border-danger border-opacity-25">
+                <div class="fw-bold text-danger"><i class="bi bi-x-circle me-1"></i> Rule 1: No Direct Entity-to-Entity Flows</div>
+                <div class="text-secondary small mt-1">An external entity cannot directly send data to another external entity within your system boundary. If two entities exchange information without involving the system, that interaction is outside the scope of the system.</div>
+            </div>
+
+            <div class="p-3 rounded-3 bg-body border border-danger border-opacity-25">
+                <div class="fw-bold text-danger"><i class="bi bi-x-circle me-1"></i> Rule 2: No Direct DataStore-to-DataStore Flows</div>
+                <div class="text-secondary small mt-1">A data store cannot move data directly into another data store without a computational process reading from one and writing to the other.</div>
+            </div>
+
+            <div class="p-3 rounded-3 bg-body border border-danger border-opacity-25">
+                <div class="fw-bold text-danger"><i class="bi bi-x-circle me-1"></i> Rule 3: No Direct Entity-to-DataStore Flows</div>
+                <div class="text-secondary small mt-1">An external user or actor cannot directly write or read from a database table or file without passing through a process that validates and executes the operation.</div>
+            </div>
+
+            <div class="p-3 rounded-3 bg-body border border-warning border-opacity-25">
+                <div class="fw-bold text-warning"><i class="bi bi-exclamation-triangle me-1"></i> Rule 4: Every Process Must Have at least One Input and One Output</div>
+                <div class="text-secondary small mt-1">A process with only output flows is a <strong>Miracle Process</strong>. A process with only input flows is a <strong>Black Hole Process</strong>. Both violate conservation of data.</div>
+            </div>
+
+            <div class="p-3 rounded-3 bg-body border border-info border-opacity-25">
+                <div class="fw-bold text-info"><i class="bi bi-check-circle me-1"></i> Rule 5: Level Balancing Axiom</div>
+                <div class="text-secondary small mt-1">The inputs and outputs entering and leaving the single system process in Level 0 Context Diagram must match exactly with the external boundary flows in Level 1 Decomposition.</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Section 4: DFD Levels -->
+    <div class="card bg-body-tertiary border-0 p-4 shadow-sm mb-4">
+        <h4 class="fw-bold text-success mb-3"><i class="bi bi-layers me-2"></i> DFD Level Hierarchy Explained</h4>
+        <div class="accordion" id="accordionLevels">
+            <div class="accordion-item bg-body border border-secondary border-opacity-10 mb-2 rounded-2 overflow-hidden">
+                <h2 class="accordion-header">
+                    <button class="accordion-button fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#collapseL0">
+                        Level 0: Context Diagram (Highest Abstraction)
+                    </button>
+                </h2>
+                <div id="collapseL0" class="accordion-collapse collapse show">
+                    <div class="accordion-body small text-secondary">
+                        Represents the entire system as a single process labeled <strong>Process 0</strong>. Shows the system boundary, external actors (users, banks, sensors, suppliers), and major input/output data flows. Data stores are intentionally excluded because all internal databases are encapsulated within the system.
+                    </div>
+                </div>
+            </div>
+
+            <div class="accordion-item bg-body border border-secondary border-opacity-10 mb-2 rounded-2 overflow-hidden">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#collapseL1">
+                        Level 1: Decomposition Diagram (Functional Breakdown)
+                    </button>
+                </h2>
+                <div id="collapseL1" class="accordion-collapse collapse">
+                    <div class="accordion-body small text-secondary">
+                        Explodes Process 0 into major functional sub-processes (1.0, 2.0, 3.0, 4.0...). Introduces internal <strong>Data Stores (D1, D2, D3...)</strong>, shows how data flows between processes, and maps interactions with external entities.
+                    </div>
+                </div>
+            </div>
+
+            <div class="accordion-item bg-body border border-secondary border-opacity-10 rounded-2 overflow-hidden">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#collapseL2">
+                        Level 2: Sub-Process Detailed Diagram
+                    </button>
+                </h2>
+                <div id="collapseL2" class="accordion-collapse collapse">
+                    <div class="accordion-body small text-secondary">
+                        Decomposes a complex Level 1 process (e.g. Process 3.0 "Order Placement") into fine-grained sub-steps (3.1 "Validate Stock", 3.2 "Calculate Tax", 3.3 "Apply Coupon", 3.4 "Charge Credit Card").
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="d-flex justify-content-center gap-3">
+        <a href="{% url 'dfd_app:studio' %}" class="btn btn-primary px-4 py-2 d-flex align-items-center gap-2 shadow-sm">
+            <i class="bi bi-bezier2"></i> Start Designing in DFD Studio
+        </a>
+        <a href="{% url 'dfd_app:templates' %}" class="btn btn-outline-secondary px-4 py-2 d-flex align-items-center gap-2">
+            <i class="bi bi-collection"></i> Browse 15 Internet Templates
+        </a>
+    </div>
+</div>
+{% endblock %}
+

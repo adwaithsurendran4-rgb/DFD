@@ -1,0 +1,727 @@
+{% extends "base.html" %}
+
+{% block extra_head %}
+<style>
+    /* Full height studio layout */
+    .studio-container {
+        height: calc(100vh - 58px);
+        overflow: hidden;
+        display: flex;
+        position: relative;
+    }
+
+    /* Left Palette & Controls */
+    .studio-sidebar {
+        width: 290px;
+        min-width: 290px;
+        background: rgba(15, 23, 42, 0.95);
+        border-right: 1px solid rgba(255, 255, 255, 0.08);
+        display: flex;
+        flex-direction: column;
+        z-index: 20;
+        overflow-y: auto;
+    }
+    [data-bs-theme="light"] .studio-sidebar {
+        background: #ffffff;
+        border-right: 1px solid rgba(0, 0, 0, 0.08);
+    }
+
+    /* Canvas Viewport */
+    .canvas-viewport {
+        flex-grow: 1;
+        position: relative;
+        background-color: var(--canvas-bg);
+        background-image: radial-gradient(var(--grid-color) 1.5px, transparent 1.5px);
+        background-size: 24px 24px;
+        overflow: hidden;
+        cursor: grab;
+        user-select: none;
+    }
+    .canvas-viewport.panning {
+        cursor: grabbing;
+    }
+    .canvas-viewport.connecting {
+        cursor: crosshair !important;
+    }
+
+    /* Top Studio Bar */
+    .studio-topbar {
+        position: absolute;
+        top: 12px;
+        left: 304px;
+        right: 16px;
+        z-index: 30;
+        pointer-events: none;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+    }
+    .studio-topbar > * {
+        pointer-events: auto;
+    }
+
+    .glass-panel {
+        background: rgba(15, 23, 42, 0.85);
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 12px;
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
+    }
+    [data-bs-theme="light"] .glass-panel {
+        background: rgba(255, 255, 255, 0.88);
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08);
+    }
+
+    /* DFD Node Styling */
+    .dfd-node {
+        position: absolute;
+        cursor: move;
+        transition: box-shadow 0.15s ease, transform 0.05s linear;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        font-size: 0.85rem;
+        font-weight: 600;
+        box-sizing: border-box;
+        z-index: 10;
+    }
+    .dfd-node:hover {
+        filter: brightness(1.1);
+    }
+    .dfd-node.selected {
+        outline: 2px solid #38bdf8 !important;
+        box-shadow: 0 0 15px rgba(56, 189, 248, 0.5) !important;
+    }
+
+    /* External Entity */
+    .node-entity {
+        background: #0369a1;
+        color: #f0f9ff;
+        border: 2px solid #38bdf8;
+        border-radius: 4px;
+        box-shadow: 0 4px 10px rgba(2, 132, 199, 0.25);
+        padding: 8px 12px;
+    }
+
+    /* Process - Gane Sarson */
+    .node-process-gane {
+        background: #4338ca;
+        color: #eef2ff;
+        border: 2px solid #818cf8;
+        border-radius: 14px;
+        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25);
+        display: flex;
+        flex-direction: column;
+        padding: 0;
+        overflow: hidden;
+    }
+    .node-process-gane .proc-header {
+        background: rgba(0, 0, 0, 0.25);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+        font-size: 0.72rem;
+        padding: 3px 6px;
+        width: 100%;
+        color: #c7d2fe;
+    }
+    .node-process-gane .proc-body {
+        padding: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-grow: 1;
+        line-height: 1.25;
+    }
+
+    /* Process - Yourdon DeMarco (Circle) */
+    .node-process-yourdon {
+        background: #4338ca;
+        color: #eef2ff;
+        border: 2px solid #818cf8;
+        border-radius: 50% !important;
+        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        padding: 12px;
+        line-height: 1.2;
+    }
+    .node-process-yourdon .proc-num {
+        font-size: 0.75rem;
+        color: #c7d2fe;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        padding-bottom: 2px;
+        margin-bottom: 4px;
+        width: 80%;
+    }
+
+    /* Data Store - Gane Sarson (Open right rectangle) */
+    .node-datastore-gane {
+        background: #047857;
+        color: #ecfdf5;
+        border-top: 2px solid #34d399;
+        border-bottom: 2px solid #34d399;
+        border-left: 2px solid #34d399;
+        border-right: none;
+        border-radius: 2px;
+        box-shadow: 0 4px 10px rgba(16, 185, 129, 0.2);
+        display: flex;
+        padding: 0;
+        overflow: hidden;
+    }
+    .node-datastore-gane .ds-id {
+        width: 44px;
+        background: rgba(0, 0, 0, 0.25);
+        border-right: 1px solid rgba(255, 255, 255, 0.2);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.8rem;
+        color: #a7f3d0;
+    }
+    .node-datastore-gane .ds-name {
+        padding: 6px 12px;
+        display: flex;
+        align-items: center;
+        flex-grow: 1;
+        font-size: 0.82rem;
+    }
+
+    /* Data Store - Yourdon DeMarco (Two parallel lines) */
+    .node-datastore-yourdon {
+        background: rgba(4, 120, 87, 0.3);
+        color: #ecfdf5;
+        border-top: 2px solid #34d399;
+        border-bottom: 2px solid #34d399;
+        border-left: none;
+        border-right: none;
+        box-shadow: 0 4px 10px rgba(16, 185, 129, 0.15);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 6px 12px;
+        font-size: 0.82rem;
+    }
+
+    /* SVG Edges Layer */
+    #svgEdgesLayer {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 5;
+    }
+    .flow-path {
+        stroke: #94a3b8;
+        stroke-width: 2.2;
+        fill: none;
+        pointer-events: stroke;
+        cursor: pointer;
+        transition: stroke 0.15s, stroke-width 0.15s;
+    }
+    .flow-path:hover {
+        stroke: #38bdf8;
+        stroke-width: 3.5;
+    }
+    .flow-path.selected {
+        stroke: #38bdf8;
+        stroke-width: 3.5;
+        filter: drop-shadow(0 0 4px #38bdf8);
+    }
+
+    /* Flow Label Pill */
+    .flow-label {
+        font-family: 'Plus Jakarta Sans', sans-serif;
+        font-size: 0.73rem;
+        font-weight: 600;
+        fill: #f1f5f9;
+        pointer-events: auto;
+        cursor: pointer;
+    }
+    .flow-label-bg {
+        fill: #0f172a;
+        stroke: #475569;
+        stroke-width: 1;
+        rx: 4;
+        ry: 4;
+        pointer-events: auto;
+        cursor: pointer;
+    }
+    [data-bs-theme="light"] .flow-label {
+        fill: #0f172a;
+    }
+    [data-bs-theme="light"] .flow-label-bg {
+        fill: #ffffff;
+        stroke: #cbd5e1;
+    }
+
+    /* Palette item */
+    .palette-item {
+        cursor: grab;
+        transition: transform 0.12s, box-shadow 0.12s;
+    }
+    .palette-item:hover {
+        transform: translateY(-2px);
+    }
+    .palette-item:active {
+        cursor: grabbing;
+    }
+
+    /* Right Inspector Drawer */
+    .inspector-drawer {
+        width: 310px;
+        background: rgba(15, 23, 42, 0.95);
+        border-left: 1px solid rgba(255, 255, 255, 0.08);
+        overflow-y: auto;
+        z-index: 20;
+    }
+    [data-bs-theme="light"] .inspector-drawer {
+        background: #ffffff;
+        border-left: 1px solid rgba(0, 0, 0, 0.08);
+    }
+
+    /* Floating Canvas Zoom Controls */
+    .zoom-widget {
+        position: absolute;
+        bottom: 20px;
+        right: 330px;
+        z-index: 30;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="studio-container">
+    <!-- LEFT SIDEBAR: Tools, Palettes, Levels, Quick Templates -->
+    <aside class="studio-sidebar p-3">
+        <!-- Quick Template Selector -->
+        <div class="mb-3">
+            <label class="form-label text-uppercase text-secondary fw-bold" style="font-size: 0.7rem; letter-spacing: 0.5px;">
+                <i class="bi bi-cloud-download me-1 text-primary"></i> Internet Template Library
+            </label>
+            <select class="form-select form-select-sm" id="templateSelector">
+                <option value="">-- Choose Internet Architecture --</option>
+                {% for t in templates %}
+                <option value="{{ t.slug }}" {% if initial_template and initial_template.slug == t.slug %}selected{% endif %}>
+                    [{{ t.category }}] {{ t.title }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <!-- Diagram Hierarchy Levels -->
+        <div class="mb-3">
+            <label class="form-label text-uppercase text-secondary fw-bold" style="font-size: 0.7rem; letter-spacing: 0.5px;">
+                <i class="bi bi-layers me-1 text-info"></i> DFD Level Hierarchy
+            </label>
+            <div class="btn-group w-100" role="group">
+                <button type="button" class="btn btn-sm btn-outline-primary active" id="btnLevel0" onclick="switchLevel(0)">
+                    Level 0 <span class="d-block" style="font-size: 0.65rem;">Context</span>
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="btnLevel1" onclick="switchLevel(1)">
+                    Level 1 <span class="d-block" style="font-size: 0.65rem;">Decomp</span>
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="btnLevel2" onclick="switchLevel(2)">
+                    Level 2 <span class="d-block" style="font-size: 0.65rem;">Detailed</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Notation Style Selector -->
+        <div class="mb-3">
+            <label class="form-label text-uppercase text-secondary fw-bold" style="font-size: 0.7rem; letter-spacing: 0.5px;">
+                <i class="bi bi-palette me-1 text-warning"></i> SE Notation Standard
+            </label>
+            <div class="btn-group w-100" role="group">
+                <input type="radio" class="btn-check" name="notationRadio" id="notGane" value="gane_sarson" checked onchange="changeNotation('gane_sarson')">
+                <label class="btn btn-outline-secondary btn-sm" for="notGane">Gane & Sarson</label>
+
+                <input type="radio" class="btn-check" name="notationRadio" id="notYourdon" value="yourdon_demarco" onchange="changeNotation('yourdon_demarco')">
+                <label class="btn btn-outline-secondary btn-sm" for="notYourdon">Yourdon & Coad</label>
+            </div>
+        </div>
+
+        <hr class="border-secondary opacity-25 my-2">
+
+        <!-- Add Element Palette -->
+        <div class="mb-3">
+            <label class="form-label text-uppercase text-secondary fw-bold" style="font-size: 0.7rem; letter-spacing: 0.5px;">
+                <i class="bi bi-plus-circle me-1 text-success"></i> Add DFD Elements
+            </label>
+            <div class="d-flex flex-column gap-2">
+                <!-- External Entity -->
+                <div class="palette-item p-2 rounded-2 border d-flex align-items-center justify-content-between" onclick="addNode('entity')">
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="p-1 rounded bg-info bg-opacity-25 text-info border border-info">
+                            <i class="bi bi-person-badge"></i>
+                        </div>
+                        <div>
+                            <div class="fw-semibold small">External Entity</div>
+                            <div class="text-secondary" style="font-size: 0.68rem;">User, Bank, Sensor, Admin</div>
+                        </div>
+                    </div>
+                    <i class="bi bi-plus-lg text-secondary"></i>
+                </div>
+
+                <!-- Process -->
+                <div class="palette-item p-2 rounded-2 border d-flex align-items-center justify-content-between" onclick="addNode('process')">
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="p-1 rounded bg-primary bg-opacity-25 text-primary border border-primary">
+                            <i class="bi bi-gear-wide-connected"></i>
+                        </div>
+                        <div>
+                            <div class="fw-semibold small">Process Node</div>
+                            <div class="text-secondary" style="font-size: 0.68rem;">1.0, 2.0 Transform Step</div>
+                        </div>
+                    </div>
+                    <i class="bi bi-plus-lg text-secondary"></i>
+                </div>
+
+                <!-- Data Store -->
+                <div class="palette-item p-2 rounded-2 border d-flex align-items-center justify-content-between" onclick="addNode('datastore')">
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="p-1 rounded bg-success bg-opacity-25 text-success border border-success">
+                            <i class="bi bi-database"></i>
+                        </div>
+                        <div>
+                            <div class="fw-semibold small">Data Store</div>
+                            <div class="text-secondary" style="font-size: 0.68rem;">D1, D2 Database / Files</div>
+                        </div>
+                    </div>
+                    <i class="bi bi-plus-lg text-secondary"></i>
+                </div>
+
+                <!-- Connect Flow Mode -->
+                <button class="btn btn-sm btn-outline-warning w-100 py-2 d-flex align-items-center justify-content-center gap-2" id="btnConnectMode" onclick="toggleConnectMode()">
+                    <i class="bi bi-arrow-up-right-circle"></i> <span id="connectModeLabel">Connect Data Flow (Arrow)</span>
+                </button>
+            </div>
+        </div>
+
+        <hr class="border-secondary opacity-25 my-2">
+
+        <!-- Project Actions -->
+        <div class="mt-auto d-flex flex-column gap-2">
+            <button class="btn btn-sm btn-primary w-100 d-flex align-items-center justify-content-center gap-2 shadow-sm" onclick="openSaveModal()">
+                <i class="bi bi-save"></i> Save Project to DB
+            </button>
+            <div class="dropdown">
+                <button class="btn btn-sm btn-outline-secondary w-100 dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                    <i class="bi bi-download me-1"></i> Export Diagram
+                </button>
+                <ul class="dropdown-menu w-100">
+                    <li><a class="dropdown-item" href="javascript:void(0)" onclick="exportDiagram('png')"><i class="bi bi-file-image me-2 text-info"></i>Export High-Res PNG</a></li>
+                    <li><a class="dropdown-item" href="javascript:void(0)" onclick="exportDiagram('svg')"><i class="bi bi-filetype-svg me-2 text-warning"></i>Export Vector SVG</a></li>
+                    <li><a class="dropdown-item" href="javascript:void(0)" onclick="exportDiagram('json')"><i class="bi bi-filetype-json me-2 text-success"></i>Export JSON File</a></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><a class="dropdown-item" href="javascript:void(0)" onclick="document.getElementById('importFileInput').click()"><i class="bi bi-upload me-2 text-primary"></i>Import JSON File</a></li>
+                </ul>
+                <input type="file" id="importFileInput" style="display:none" accept=".json" onchange="importJSONFile(event)">
+            </div>
+        </div>
+    </aside>
+
+    <!-- MAIN CANVAS VIEWPORT -->
+    <div class="canvas-viewport" id="canvasViewport" onmousedown="onCanvasMouseDown(event)">
+        <!-- SVG Connections Layer -->
+        <svg id="svgEdgesLayer">
+            <defs>
+                <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                    <polygon points="0 0, 10 3.5, 0 7" fill="#94a3b8" />
+                </marker>
+                <marker id="arrowhead-selected" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                    <polygon points="0 0, 10 3.5, 0 7" fill="#38bdf8" />
+                </marker>
+            </defs>
+            <g id="edgesGroup"></g>
+        </svg>
+
+        <!-- HTML Nodes Container -->
+        <div id="nodesContainer" style="position: absolute; top:0; left:0; width:100%; height:100%; pointer-events: none;"></div>
+
+        <!-- Floating Top Toolbar -->
+        <div class="studio-topbar">
+            <!-- Project Title & Level Badge -->
+            <div class="glass-panel px-3 py-2 d-flex align-items-center gap-3">
+                <input type="text" id="projectTitleInput" class="form-control form-control-sm border-0 bg-transparent fw-bold fs-6 text-white" value="Online Banking & ATM System" style="width: 280px;" title="Click to rename project">
+                <span class="badge badge-subtle-primary" id="activeLevelBadge">Level 0: Context</span>
+            </div>
+
+            <!-- Central Operations Toolbar -->
+            <div class="glass-panel px-3 py-2 d-flex align-items-center gap-2">
+                <button class="btn btn-sm btn-outline-info rounded-pill px-3" onclick="openAIGeneratorModal()" title="Generate DFD from Natural Language Prompt">
+                    <i class="bi bi-stars me-1"></i> AI Prompt to DFD
+                </button>
+                <button class="btn btn-sm btn-outline-success rounded-pill px-3" onclick="validateActiveDiagram()" title="Run Software Engineering Rule Checks">
+                    <i class="bi bi-shield-check me-1"></i> Check SE Rules
+                </button>
+                <button class="btn btn-sm btn-outline-light rounded-pill px-3" onclick="autoLayoutCurrentLevel()" title="Hierarchical Auto-Layout">
+                    <i class="bi bi-diagram-3 me-1"></i> Auto-Layout
+                </button>
+                <button class="btn btn-sm btn-outline-light rounded-pill px-3" onclick="openDataDictionaryModal()" title="View Generated Software Engineering Data Dictionary">
+                    <i class="bi bi-table me-1"></i> Data Dictionary
+                </button>
+                <button class="btn btn-sm btn-outline-warning rounded-pill px-3" onclick="openMermaidModal()" title="Generate & Export Mermaid.js Diagram Syntax">
+                    <i class="bi bi-code-slash me-1"></i> Mermaid.js
+                </button>
+            </div>
+
+            <!-- Right Controls: Validation Score Meter -->
+            <div class="glass-panel px-3 py-2 d-flex align-items-center gap-2" id="scoreIndicator" title="DFD Rule Verification Quality Score">
+                <span class="small fw-semibold text-secondary">SE Score:</span>
+                <span class="badge bg-success fs-6" id="scoreBadge">100 / 100</span>
+            </div>
+        </div>
+
+        <!-- Floating Zoom Widget -->
+        <div class="zoom-widget glass-panel p-1 d-flex align-items-center gap-1">
+            <button class="btn btn-sm btn-outline-secondary border-0" onclick="zoomCanvas(0.1)" title="Zoom In"><i class="bi bi-zoom-in"></i></button>
+            <span class="font-mono small px-1" id="zoomLevelText">100%</span>
+            <button class="btn btn-sm btn-outline-secondary border-0" onclick="zoomCanvas(-0.1)" title="Zoom Out"><i class="bi bi-zoom-out"></i></button>
+            <button class="btn btn-sm btn-outline-secondary border-0" onclick="resetCanvasZoom()" title="Reset Zoom / Fit"><i class="bi bi-aspect-ratio"></i></button>
+        </div>
+    </div>
+
+    <!-- RIGHT INSPECTOR DRAWER -->
+    <aside class="inspector-drawer p-3" id="inspectorDrawer">
+        <h6 class="fw-bold mb-3 d-flex align-items-center justify-content-between">
+            <span><i class="bi bi-sliders me-1 text-primary"></i> Inspector</span>
+            <span class="badge bg-secondary rounded-pill" id="selectionTypeBadge">No Selection</span>
+        </h6>
+
+        <!-- Element Properties Form -->
+        <div id="inspectorProperties">
+            <p class="text-secondary small">Click on any Entity, Process, Data Store, or Data Flow to view and edit its software engineering attributes.</p>
+        </div>
+
+        <hr class="border-secondary opacity-25 my-3">
+
+        <!-- Live Validation Breakdown -->
+        <h6 class="fw-bold mb-2 small text-uppercase text-secondary" style="letter-spacing: 0.5px;">
+            <i class="bi bi-check2-circle text-success me-1"></i> SE Compliance Checks
+        </h6>
+        <div id="validationAlertsBox">
+            <div class="alert alert-success py-2 px-3 small mb-2 d-flex align-items-center gap-2">
+                <i class="bi bi-check-circle-fill fs-5 text-success"></i>
+                <div>All Gane-Sarson & Yourdon rules satisfied! No miracles or black holes.</div>
+            </div>
+        </div>
+
+        <!-- Level Stats -->
+        <div class="card bg-body-tertiary border-0 p-2 mt-3">
+            <div class="fw-bold small mb-2 text-secondary">System Component Counts</div>
+            <div class="d-flex justify-content-between small py-1 border-bottom border-secondary border-opacity-10">
+                <span>External Entities:</span>
+                <span class="fw-bold font-mono text-info" id="statEntities">0</span>
+            </div>
+            <div class="d-flex justify-content-between small py-1 border-bottom border-secondary border-opacity-10">
+                <span>Processes:</span>
+                <span class="fw-bold font-mono text-primary" id="statProcesses">0</span>
+            </div>
+            <div class="d-flex justify-content-between small py-1 border-bottom border-secondary border-opacity-10">
+                <span>Data Stores:</span>
+                <span class="fw-bold font-mono text-success" id="statStores">0</span>
+            </div>
+            <div class="d-flex justify-content-between small py-1">
+                <span>Data Flows (Edges):</span>
+                <span class="fw-bold font-mono text-warning" id="statEdges">0</span>
+            </div>
+        </div>
+    </aside>
+</div>
+
+<!-- ============================================== -->
+<!-- MODALS -->
+<!-- ============================================== -->
+
+<!-- AI / NLP DFD Generator Modal -->
+<div class="modal fade" id="aiGeneratorModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg glass-panel">
+            <div class="modal-header border-secondary border-opacity-25">
+                <h5 class="modal-title fw-bold text-white d-flex align-items-center gap-2">
+                    <i class="bi bi-stars text-info fs-4"></i> AI Prompt to Data Flow Diagram
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-secondary small">
+                    Type or paste any system requirement, user story, or software specification.
+                    The intelligent NLP engine decomposes actors, processes, datastores, and generates complete Level 0 and Level 1 DFDs.
+                </p>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold small">System Name (Optional)</label>
+                    <input type="text" id="aiSystemNameInput" class="form-control" placeholder="e.g. Car Rental & Fleet Tracking System">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold small">System Description / Requirements</label>
+                    <textarea id="aiPromptInput" class="form-control font-mono" rows="4" placeholder="Describe the system workflow, e.g.:
+Customers register and search available cars. Customers book a vehicle and make payments through payment gateway. Fleet managers add vehicles and view maintenance logs. System generates rental agreement and invoices."></textarea>
+                </div>
+
+                <!-- Sample Prompts Pills -->
+                <div class="d-flex flex-wrap gap-2 mb-2">
+                    <span class="small text-secondary align-self-center">Try prompt:</span>
+                    <button class="btn btn-sm btn-outline-secondary rounded-pill py-0 px-2" onclick="setAIPrompt('Car Rental System with customers, online reservation, fleet inventory, payment gateway and admin invoices.')">Car Rental</button>
+                    <button class="btn btn-sm btn-outline-secondary rounded-pill py-0 px-2" onclick="setAIPrompt('Smart Parking Garage System where drivers scan QR code to enter, system tracks vacant slots, calculates parking charges and handles automated exit gate payment.')">Smart Parking</button>
+                    <button class="btn btn-sm btn-outline-secondary rounded-pill py-0 px-2" onclick="setAIPrompt('Cryptocurrency Trading Exchange where users verify KYC, deposit fiat via banking gateway, execute limit/market buy and sell orders against order book, and withdraw funds.')">Crypto Exchange</button>
+                    <button class="btn btn-sm btn-outline-secondary rounded-pill py-0 px-2" onclick="setAIPrompt('Online Movie Streaming Platform where subscribers browse video catalog, stream videos over CDN, manage watchlists, and subscription billing auto-renews.')">Movie Streaming</button>
+                </div>
+            </div>
+            <div class="modal-footer border-secondary border-opacity-25">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary px-4 d-flex align-items-center gap-2" id="btnExecuteAI" onclick="executeAIGeneration()">
+                    <i class="bi bi-cpu"></i> Generate DFD
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Data Dictionary Modal -->
+<div class="modal fade" id="dataDictionaryModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border-0 shadow-lg glass-panel">
+            <div class="modal-header border-secondary border-opacity-25">
+                <h5 class="modal-title fw-bold text-white d-flex align-items-center gap-2">
+                    <i class="bi bi-table text-primary fs-4"></i> Software Engineering Data Dictionary
+                </h5>
+                <div class="d-flex gap-2 ms-auto me-3">
+                    <button class="btn btn-sm btn-outline-light" onclick="printDataDictionary()"><i class="bi bi-printer me-1"></i> Print / PDF</button>
+                    <button class="btn btn-sm btn-outline-success" onclick="exportDataDictionaryCSV()"><i class="bi bi-file-earmark-spreadsheet me-1"></i> Export CSV</button>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4" id="dataDictionaryPrintable">
+                <div class="mb-3">
+                    <h6 class="fw-bold" id="dictSystemTitle">System Data Dictionary</h6>
+                    <p class="text-secondary small">Structured definition of all Data Flows, Data Stores, Processes, and Data Structures in compliance with IEEE-Std 830 SRS documentation.</p>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle" id="dictTable">
+                        <thead class="table-dark">
+                            <tr>
+                                <th style="width: 20%;">Element / Flow Name</th>
+                                <th style="width: 15%;">Category</th>
+                                <th style="width: 15%;">Source</th>
+                                <th style="width: 15%;">Destination</th>
+                                <th style="width: 35%;">Data Composition & Attributes</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dictTableBody">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Save Project Modal -->
+<div class="modal fade" id="saveProjectModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg glass-panel">
+            <div class="modal-header border-secondary border-opacity-25">
+                <h5 class="modal-title fw-bold text-white">Save DFD Project</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold small">Project Name</label>
+                    <input type="text" id="saveProjectNameInput" class="form-control" value="Online Banking & ATM System">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold small">Description / Notes</label>
+                    <textarea id="saveProjectDescInput" class="form-control" rows="3" placeholder="Context diagram and decomposition for software engineering submission."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer border-secondary border-opacity-25">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary px-4" onclick="executeSaveProject()">Save Project</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Node / Edge Modal -->
+<div class="modal fade" id="editElementModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg glass-panel">
+            <div class="modal-header border-secondary border-opacity-25">
+                <h5 class="modal-title fw-bold text-white" id="editElementTitle">Edit Element</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3" id="editNumberGroup">
+                    <label class="form-label fw-semibold small">Number / Code</label>
+                    <input type="text" id="editNumberInput" class="form-control font-mono" placeholder="e.g. 1.0 or D1">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold small">Label / Name</label>
+                    <input type="text" id="editLabelInput" class="form-control" placeholder="Name of process, flow, or entity">
+                </div>
+                <div class="mb-3" id="editDescGroup">
+                    <label class="form-label fw-semibold small">Description / Purpose</label>
+                    <textarea id="editDescInput" class="form-control" rows="2"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer border-secondary border-opacity-25">
+                <button type="button" class="btn btn-danger me-auto" onclick="deleteSelectedElement()">Delete Element</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveElementEdit()">Save Changes</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Mermaid.js Modal -->
+<div class="modal fade" id="mermaidModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border-0 shadow-lg glass-panel">
+            <div class="modal-header border-secondary border-opacity-25">
+                <h5 class="modal-title fw-bold text-white d-flex align-items-center gap-2">
+                    <i class="bi bi-code-slash text-warning fs-4"></i> Mermaid.js Diagram Syntax & Live Preview
+                </h5>
+                <div class="d-flex gap-2 ms-auto me-3">
+                    <button class="btn btn-sm btn-outline-warning" onclick="copyMermaidCode()"><i class="bi bi-clipboard me-1"></i> Copy Code</button>
+                    <button class="btn btn-sm btn-outline-light" onclick="downloadMermaidFile()"><i class="bi bi-download me-1"></i> Download .mmd</button>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="row g-4">
+                    <div class="col-lg-5">
+                        <label class="form-label fw-semibold small text-secondary">Generated Mermaid.js Code (GitHub Markdown Compatible)</label>
+                        <textarea id="mermaidCodeTextarea" class="form-control font-mono small" rows="18" readonly style="background: rgba(0,0,0,0.3); color: #a5f3fc; line-height: 1.4;"></textarea>
+                    </div>
+                    <div class="col-lg-7">
+                        <label class="form-label fw-semibold small text-secondary">Live Mermaid Render</label>
+                        <div id="mermaidRenderContainer" class="p-4 rounded-3 border border-secondary border-opacity-25 overflow-auto text-center" style="background: #090d16; min-height: 380px;">
+                            <!-- Mermaid SVG rendered here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<!-- Mermaid.js -->
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<!-- Load initial project and template dataset -->
+<script>
+    const INITIAL_TEMPLATES_DATA = {{ templates_json|safe }};
+</script>
+<!-- Studio Canvas Core Engine Script -->
+<script src="/static/js/dfd_studio.js"></script>
+{% endblock %}
+
